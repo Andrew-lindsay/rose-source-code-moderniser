@@ -20,6 +20,9 @@ TESTS_DIR=tests
 TRANSLATOR=modernise-auto
 TRANSLATOR_SOURCE=$(SRC_DIR)/$(TRANSLATOR).cpp
 
+FOR-TRANSLATOR=modernise-range-for
+FOR-TRANSLATOR_SOURCE=$(SRC_DIR)/$(FOR-TRANSLATOR).cpp
+
 ## Input testcode for your translator
 TESTCODE=
 
@@ -27,12 +30,16 @@ TESTCODE=
 # Makefile Targets
 #-------------------------------------------------------------
 
-all: $(BUILD_DIR)/$(TRANSLATOR)
+all: $(BUILD_DIR)/$(TRANSLATOR) $(BUILD_DIR)/$(FOR-TRANSLATOR)
 
 # compile the translator and generate an executable
 # -g is recommended to be used by default to enable debugging your code
 $(BUILD_DIR)/$(TRANSLATOR): $(TRANSLATOR_SOURCE)
 	$(CXX)  -std=c++11 -g $(TRANSLATOR_SOURCE) -I/home/sheep/opt/rose_inst/include/rose -I/home/sheep/opt/dlib/18.18  -pthread -I/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/include -I. -L/home/sheep/opt/rose_inst/lib -lrose -pthread  -L/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -lboost_date_time -lboost_thread -lboost_filesystem -lboost_program_options -lboost_regex -lboost_system -lboost_serialization -lboost_wave -lboost_iostreams -lboost_chrono -L/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -ljvm  -ldl -lm -L. -Wl,-rpath -Wl,/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -Wl,-rpath -Wl,/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -o $@
+
+$(BUILD_DIR)/$(FOR-TRANSLATOR): $(FOR-TRANSLATOR_SOURCE)
+	$(CXX)  -std=c++11 -g $(FOR-TRANSLATOR_SOURCE) -I/home/sheep/opt/rose_inst/include/rose -I/home/sheep/opt/dlib/18.18  -pthread -I/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/include -I. -L/home/sheep/opt/rose_inst/lib -lrose -pthread  -L/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -lboost_date_time -lboost_thread -lboost_filesystem -lboost_program_options -lboost_regex -lboost_system -lboost_serialization -lboost_wave -lboost_iostreams -lboost_chrono -L/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -ljvm  -ldl -lm -L. -Wl,-rpath -Wl,/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -Wl,-rpath -Wl,/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -o $@
+
 # test the translator
 check: $(TRANSLATOR)
 	./$(TRANSLATOR) -c -I. -I$(ROSE_INSTALL)/include $(TESTCODE) 
