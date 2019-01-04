@@ -4,6 +4,10 @@
 
 using std::string;
 
+/* USAGE:
+ *   InitialisedNameTraversal traveral;
+ *   traveral.traverse(initFor, preorder);
+ */
 class InitialisedNameTraversal : public AstSimpleProcessing{
 
 	SgInitializedName* retNode = NULL;
@@ -41,8 +45,7 @@ public:
 		return isValid;
 	}
 	
-    void visit(SgNode* node){
-		
+    void visit(SgNode* node){	
 		SgMemberFunctionRefExp* memberFunc = isSgMemberFunctionRefExp(node);
 		SgVarRefExp* containerRef = isSgVarRefExp(node);
 		
@@ -70,60 +73,19 @@ public:
 class SimpleForLoopTraversal : public AstSimpleProcessing{
 	
 private:
-	/*
-	 * If all 3 part of for loop match the intialisation condition and return true 
-	 * for( vector<something>::iterator iter = vec.begin; iter != vec.end(); vec++) has to iterate throught the entire container 
-	 * for ( type elem : container)
-	 */
-	bool isIteratorLoop(SgForStatement *forNode){		
-		SgForInitStatement* initFor = forNode->get_for_init_stmt();
-		SgStatement* testFor = forNode->get_test();
-		SgExpression* incrFor = forNode->get_increment();
+
+    bool hasValidInitializer(SgNode* node, SgName& containerName, SgName& iteratorName){
 		SgName begin = "begin";
 		
-		// DEBUG 
-		for(SgNode* iter : initFor->get_traversalSuccessorContainer()){
-			printf("Node Name: %s\n", iter->unparseToString().c_str());
-		}
-	    
-		// change later 
-		
-		if(initFor->get_traversalSuccessorContainer().size() != 1){ 
-			return false;
-		}
-		
 		// 1. get variable name(or symbol) and check container name and that it calls begin
-		// if initialise here (general case from getting name of iterator variable also container)
-		
-		
-		SgVariableDeclaration *initVarDec = isSgVariableDeclaration(initFor->get_traversalSuccessorContainer()[0]); // error if var already initialised
+		SgVariableDeclaration *initVarDec = isSgVariableDeclaration(node->get_traversalSuccessorContainer()[0]); 
 		if(initVarDec == NULL){return false;}
-		// vardec name
-		SgName initName =  initVarDec->get_variables().at(0)->get_name();
+		
+		// iterators name 
+	    iteratorName =  initVarDec->get_variables().at(0)->get_name();
 		SgInitializedName* initialisedName = initVarDec->get_variables().at(0);
+	   
 		
-		// ===============================
-		// InitialisedNameTraversal traveral;
-		// traveral.traverse(initFor, preorder);
-		// printf("class of Var %s\n", traveral.getName()->get_name().getString().c_str());
-		// ===============================		
-		printf("Name of Var %s\n", initName.getString().c_str());
-		
-		//                        --- SgDotExp ---
-		// what about nested dot or arrow method calls just get to the 
-		// locate the function call to begin and get the container name of a ref to it
-
-		// 2. ----- old way of ensuring correct iterator initialisation ----- 
-		// InitialConditionTraversal initConTraversal;
-	    // initConTraversal.traverse(initFor, preorder); // needs to be in order
-		// // DEBUG
-		// printf("BEGIN CALLED: %s\n", initConTraversal.hasCalledBegin() ? "true" : "false");
-		// printf("Container Name: %s\n", initConTraversal.getContainersName().getString().c_str());
-		// if(initConTraversal.getContainersName() == "" || !initConTraversal.hasCalledBegin()){// no container and no call to begin exit
-		// 	return false;
-		//}
-		// --------------------------
-
 		SgAssignInitializer* assign = isSgAssignInitializer(initialisedName->get_initializer());
 		if(assign == NULL ){ return false;}
 
@@ -138,8 +100,40 @@ private:
    		if(lhs == NULL || rhs == NULL ){return false;}
 		if(rhs->get_symbol()->get_name() != begin){return false;}
 
-		SgName containersName = lhs->get_symbol()->get_name();
-		printf("Container Name: %s\n", containersName.getString().c_str());
+		
+		containerName = lhs->get_symbol()->get_name();
+		
+		return true;
+	}
+	
+	/*
+	 * If all 3 part of for loop match the intialisation condition and return true 
+	 * for( vector<something>::iterator iter = vec.begin; iter != vec.end(); vec++) has to iterate throught the entire container 
+	 * for ( type elem : container)
+	 */
+	bool isIteratorLoop(SgForStatement *forNode){		
+		SgForInitStatement* initFor = forNode->get_for_init_stmt();
+		SgStatement* testFor = forNode->get_test();
+		SgExpression* incrFor = forNode->get_increment();
+		
+		// DEBUG 
+		for(SgNode* iter : initFor->get_traversalSuccessorContainer()){
+			printf("Node Name: %s\n", iter->unparseToString().c_str());
+		}
+
+		// Ensure only single vardeclaration om init statement
+		if(initFor->get_traversalSuccessorContainer().size() != 1){ return false;}
+		
+		SgName containerName;
+		SgName iteratorName;
+		if(!hasValidInitializer(initFor, containerName, iteratorName)){
+			return false;
+		}
+		// DEBUG
+		printf("Container Name: %s\n", containerName.getString().c_str());
+		printf("Name of Var %s\n", iteratorName.getString().c_str());
+
+		
 		// if assigned
 		
 		// check (lhs || rhs) is the same variable and the other side is same container calling end
