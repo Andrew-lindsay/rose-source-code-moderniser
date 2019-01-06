@@ -4,28 +4,68 @@
 
 using std::string;
 
-/* USAGE:
- *   InitialisedNameTraversal traveral;
- *   traveral.traverse(initFor, preorder);
- */
-class InitialisedNameTraversal : public AstSimpleProcessing{
 
-	SgInitializedName* retNode = NULL;
+class IteratorUseTraversal : public AstSimpleProcessing{
+
+	SgName container;
+	SgName iterator;
+	bool validToTransform = true;
+		
+	bool isMethodCall(SgFunctionCallExp* func, const SgName& containerName){
+
+		//printf("class of func: %s\n", func->get_function()->class_name().c_str());
+		SgDotExp* dotExp =  isSgDotExp(func->get_function());
+		if(dotExp == NULL){ return false;}
+		
+		SgVarRefExp* lhs = isSgVarRefExp(dotExp->get_lhs_operand());
+		SgMemberFunctionRefExp* rhs = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+		
+		//printf("class of dotVar: %s\n", dotExp->get_lhs_operand()->class_name().c_str());
+		//printf("class of dotMemFunc: %s\n", dotExp->get_rhs_operand()->class_name().c_str());
+		
+   		if(lhs == NULL || rhs == NULL ){return false;}
+		
+		printf("Method call - Condition MethodName: %s ,containerName %s\n"
+			   , rhs->get_symbol()->get_name().getString().c_str()
+			   , lhs->get_symbol()->get_name().getString().c_str());
+		
+		if(lhs->get_symbol()->get_name() != containerName){
+			return false;
+		}
+
+		return true;
+	}
 
 public:
 	
-	SgInitializedName* getName(){
-		return retNode;
-	} 
+	IteratorUseTraversal(const SgName& con, const SgName& iter){
+		container = con;
+		iterator = iter;
+	}
 	
-    void visit(SgNode* node){
+	void visit(SgNode* node){
+		// check for uses of iterator
+		// check for methods applied to iterator
+		// check that it is only used to be defereneced
+		// arrow methods are allowed as they are just deference followed by method call
+		// in the end we replace all dereferences with the elem for the range operator
+		// check for uses of the container in the loop body, if used do not transform
 		
-		SgInitializedName* nameNode = isSgInitializedName(node);
 		
-		if(nameNode != NULL){
-			retNode = nameNode;
+		SgVarRefExp* varRef = isSgVarRefExp(node);
+		
+		if(varRef != NULL /*&& (varRef->get_symbol()->get_name() == container || varRef->get_symbol()->get_name() == iterator)*/){
+			// printf("Found use of container or iterator: %s\n" , varRef->get_symbol()->get_name().getString().c_str());
+			
+			// check no method calls to container take place 
+			
+			
+		}else if(SgFunctionCallExp* func = isSgFunctionCallExp(node)){
+			if(isMethodCall(func, container)){
+				validToTransform = false;
+			}
 		}
-		
+   		
 	}
 };
 
@@ -107,19 +147,19 @@ private:
 	
 	bool isMethodCall(SgFunctionCallExp* func, const SgName& containerName,const SgName& methodName){
 
-		printf("class of func: %s\n", func->get_function()->class_name().c_str());
+		//printf("class of func: %s\n", func->get_function()->class_name().c_str());
 		SgDotExp* dotExp =  isSgDotExp(func->get_function());
 		if(dotExp == NULL){ return false;}
 		
 		SgVarRefExp* lhs = isSgVarRefExp(dotExp->get_lhs_operand());
 		SgMemberFunctionRefExp* rhs = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
 		
-		printf("class of dotVar: %s\n", dotExp->get_lhs_operand()->class_name().c_str());
-		printf("class of dotMemFunc: %s\n", dotExp->get_rhs_operand()->class_name().c_str());
+		//printf("class of dotVar: %s\n", dotExp->get_lhs_operand()->class_name().c_str());
+		//printf("class of dotMemFunc: %s\n", dotExp->get_rhs_operand()->class_name().c_str());
 		
    		if(lhs == NULL || rhs == NULL ){return false;}
 		
-		printf("Condition MethodName: %s ,containerName %s\n"
+		printf("Method call - Condition MethodName: %s ,containerName %s\n"
 			   , rhs->get_symbol()->get_name().getString().c_str()
 			   , lhs->get_symbol()->get_name().getString().c_str());
 		
@@ -134,13 +174,12 @@ private:
 		SgName methodNameEnd = "end";
 
 		//DEBUG
-		printf("class of test: %s\n",testFor->class_name().c_str());
+		//printf("class of test: %s\n",testFor->class_name().c_str());
 		SgExprStatement* expr = isSgExprStatement(testFor);
 		if(expr == NULL){return false;}
 		
 		//DEBUG
-		printf("HERE line 133\n");
-		printf("class of NEQ : %s\n",expr->get_expression()->class_name().c_str());
+		//printf("class of NEQ : %s\n",expr->get_expression()->class_name().c_str());
 
 		// dealing with an over loaded operator due to iterators
 		SgFunctionCallExp* funcOverLoad = isSgFunctionCallExp(expr->get_expression());
@@ -158,8 +197,8 @@ private:
 		// if(neq == NULL){return false;}
 
 		// DEBUG
-		printf("class of NEQ FUNC: %s\n", funcOverLoad->get_args()->get_expressions().at(1)->class_name().c_str());	// *somthing* != function
-		printf("class of NEQ varRef: %s\n",funcOverLoad->get_args()->get_expressions().at(0)->class_name().c_str()); // a != *something*
+		//printf("class of NEQ FUNC: %s\n", funcOverLoad->get_args()->get_expressions().at(1)->class_name().c_str());	// *somthing* != function
+		//printf("class of NEQ varRef: %s\n",funcOverLoad->get_args()->get_expressions().at(0)->class_name().c_str()); // a != *something*
 		
 		if(var != NULL && func != NULL
 		   &&  var->get_symbol()->get_name() == iterName
@@ -167,7 +206,8 @@ private:
 			printf("Condition iteratorName: %s\n",var->get_symbol()->get_name().getString().c_str());
 			return true;
 		}
-
+		
+		// check for the args to =! being the oppsite way round
 		SgVarRefExp* varR = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(1) );
 		SgFunctionCallExp* funcL = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(0));
 													  
@@ -182,11 +222,25 @@ private:
 	    return false;
 	}
 
+	// iterators have overloaded operators functions !=, ++. ==, etc
+	
+	/*
+	 * Function checks that an overloaded ++ operator is utilised on the same variable passed as argument 
+	 * iterators using prefix ++ and posfix ++ are both handled
+	 */
 	bool hasVaildIncrement( SgExpression* incrFor, const SgName& iteratorName){
+
+		// is a function call using overloaded ++ operator
+	    SgFunctionCallExp* funCall = isSgFunctionCallExp(incrFor);
+		if(funCall == NULL){return false;}
 		
-		
-		
-		return false;
+		// check method call is on iterator and is the ++ member operation 
+		if(!isMethodCall(funCall, iteratorName, "operator++")){
+			return false;
+		}
+
+		printf("Valid Increment\n");
+		return true;
 	}
 	
 	/*
@@ -194,7 +248,7 @@ private:
 	 * for( vector<something>::iterator iter = vec.begin; iter != vec.end(); vec++) has to iterate throught the entire container 
 	 * for ( type elem : container)
 	 */
-	bool isIteratorLoop(SgForStatement *forNode){		
+	bool isIteratorLoop(SgForStatement *forNode, SgName& containerName, SgName& iteratorName){		
 		SgForInitStatement* initFor = forNode->get_for_init_stmt();
 		SgStatement* testFor = forNode->get_test();
 		SgExpression* incrFor = forNode->get_increment();
@@ -207,25 +261,20 @@ private:
 		// Ensure only single vardeclaration om init statement
 		if(initFor->get_traversalSuccessorContainer().size() != 1){ return false;}
 		
-		SgName containerName;
-		SgName iteratorName;
-		if(!hasValidInitializer(initFor, containerName, iteratorName)){
-			return false;
-		}
+		printf("\tChecking Initializer\n");
+		if(!hasValidInitializer(initFor, containerName, iteratorName)){return false;}
+		
 		// DEBUG
 		printf("Container Name: %s\n", containerName.getString().c_str());
 		printf("Name of Var %s\n", iteratorName.getString().c_str());
 		
-		// Instance where init variable already declared before for loop 
-		printf("Checking comparitor\n");
+		printf("\tChecking comparitor\n");
+		// init variable already declared before for loop maybe a problem 
 		// check (lhs || rhs) is the same variable and the other side is same container calling end
-		if(!hasValidComparitor(testFor, containerName, iteratorName)){
-			return false;
-		}
-
-		if(!hasVaildIncrement( incrFor, iteratorName)){
-			return false;
-		}
+		if(!hasValidComparitor(testFor, containerName, iteratorName)){return false;}
+		
+		printf("\tChecking Increment\n");
+		if(!hasVaildIncrement( incrFor, iteratorName)){return false;}
 		
 		// needs to be the same container being iterated (adding one may not work for all containers) 
 		
@@ -236,9 +285,18 @@ private:
 	}
 
 	/*
-	 * The use of the data structure in the loop means it is safe to transform
+	 * Used to access the safety of a transformation
+	 *   - checks for uses of the iterator in defined in the initializer
+	 *   - methods are called on the iterator then 
+	 * 
+	 * For loop bodies can contain basic blocks or singe statements this does not 
+	 * matter as we are traversing the entire body 
 	 */
-	bool safeForTransform(SgForStatement *forNode){
+	bool safeForTransform(SgForStatement *forNode, const SgName& conName, const SgName& iterName){
+
+		IteratorUseTraversal iterUseTraversal = IteratorUseTraversal(conName, iterName); // constructor
+		iterUseTraversal.traverse(forNode->get_loop_body(), preorder);
+		
 		return true;
 	}
 
@@ -248,11 +306,15 @@ public:
 
 	void visit(SgNode *node){
 		
-		SgForStatement *loopNode  = isSgForStatement(node); // ignores ranged for loops 
-			
+		SgForStatement *loopNode  = isSgForStatement(node); // ignores ranged for loops
+		
+		SgName containerName;
+		SgName iteratorName;
+		
 		if(loopNode != NULL && !isCompilerGenerated(loopNode)){
 			printf("=== FOR loop Start ===\n");
-			if( isIteratorLoop(loopNode) && safeForTransform(loopNode)){
+
+			if( isIteratorLoop(loopNode, containerName, iteratorName) && safeForTransform(loopNode, containerName, iteratorName )){
 				
 				printf("FOR LOOP FOUND: %s, name: %s, compiler Gen: %s\n"
 					   , loopNode->class_name().c_str()
@@ -272,6 +334,7 @@ public:
 		
 	}
 };
+
 
 
 int main(int argc, char* argv[]){
