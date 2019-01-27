@@ -47,8 +47,8 @@ public:
 		   && isSgClassDefinition(assignNode->get_parent()->get_parent()) == NULL // cant auto non-static fields in classes
 		   && isSgAssignInitializer(assignNode->get_initptr())){ 
 
-			//DEBUG
-			//printf("%s", isSgClassDefinition(assignNode->get_parent()->get_parent()) ? "true\n" : "false\n");
+			// DEBUG
+			// printf("%s", isSgClassDefinition(assignNode->get_parent()->get_parent()) ? "true\n" : "false\n");
 			
 			SgAssignInitializer* initializer =  (SgAssignInitializer* ) assignNode->get_initializer();
 			SgType* rhsType = initializer->get_operand()->get_type();
@@ -73,8 +73,8 @@ public:
 			SgName name_new = "auto";
 		 	SgTreeCopy copyDeep;
 			SgType* type = assignNode->get_typeptr();
-
-			// check for an implict cast
+			
+			// check for an implict cast 
 			SgCastExp* castExpr = isSgCastExp(initializer->get_operand());
 
 			// need to handle function pointner/ dont try and auto function pointers 
@@ -84,16 +84,18 @@ public:
 				printf("Implict cast: %s\n\n", assignNode->unparseToString().c_str());
 				return;
 			}
-	    
+			
+			
+			
 			if(assignNode->get_using_auto_keyword()){
 				printf("Using Auto don't alter\n\n");
 				return;
 			}
 
 			// TESTING IF CHECK MAKES ANY CHANGE
-			//if(assignNode->get_file_info()->get_file_id() != 0){
-			//	return;
-			//}
+			// if(assignNode->get_file_info()->get_file_id() != 0){
+			//	 return;
+			// }
 	    
 			if(type->containsInternalTypes() && isSgTypedefType(type) == NULL){ // 
 				// only need to copy when we know we have nested types 
@@ -101,7 +103,8 @@ public:
 				printf("RECURSIVE TYPES\n\n");		
 				
                 /* old way 
-				   type->reset_base_type(new SgTemplateType(name_new)); */
+				   type->reset_base_type(new SgTemplateType(name_new)); 
+				*/
 		
 				//set Basetype
 				setbaseType(typeCopy, new SgTemplateType(name_new));

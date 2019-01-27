@@ -3,39 +3,42 @@
 #include <string>
 
 using std::string;
+using namespace SageBuilder;
+using namespace SageInterface;
+
+class IteratorUseTransform : public AstSimpleProcessing{
+	
+    SgName iterator;
+	
+public:
+	IteratorUseTransform(const SgName& iter){
+		iterator = iter;
+	}
+
+private:
+	void visit(SgNode* node){
+
+		// need to take into account the overloaded operators again
+		// pointerDerefExp not enough
+		if(SgPointerDerefExp* refExp = isSgPointerDerefExp(node)){
+			
+		}
+		else if(SgArrowExp* arrowExp = isSgArrowExp(node)){
+			
+		}
+		
+	}
+	
+};
 
 
 class IteratorUseTraversal : public AstSimpleProcessing{
 
-	SgName container;
+    SgName container;
 	SgName iterator;
 	bool validToTransform = true;
 private:
-	bool isMethodCall(SgFunctionCallExp* func, const SgName& containerName){
-
-		//printf("class of func: %s\n", func->get_function()->class_name().c_str());
-		SgDotExp* dotExp =  isSgDotExp(func->get_function());
-		if(dotExp == NULL){ return false;}
-		
-		SgVarRefExp* lhs = isSgVarRefExp(dotExp->get_lhs_operand());
-		SgMemberFunctionRefExp* rhs = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
-	   
-		//printf("class of dotVar: %s\n", dotExp->get_lhs_operand()->class_name().c_str());
-		//printf("class of dotMemFunc: %s\n", dotExp->get_rhs_operand()->class_name().c_str());
-		
-   		if(lhs == NULL || rhs == NULL ){return false;}
-		
-		printf("Method call - Condition MethodName: %s ,containerName %s\n"
-			   , rhs->get_symbol()->get_name().getString().c_str()
-			   , lhs->get_symbol()->get_name().getString().c_str());
-		
-		if(lhs->get_symbol()->get_name() != containerName){
-			return false;
-		}
-		
-		return true;
-	}
-
+	
 	/*
 	 * returns name of the function called if object getting its method called matches containerName 
 	 */
@@ -70,6 +73,10 @@ public:
 		container = con;
 		iterator = iter;
 	}
+
+	bool getValidToTransform(){
+		return validToTransform;
+	}
 	
 	void visit(SgNode* node){
 		// check for uses of iterator
@@ -99,10 +106,12 @@ public:
 				validToTransform = false;
 			}
 			delete containerMethod;
+
+			// what about reference then dereference not really an iterator anymore in type ?
 			
 			// only operation on the iterator is a deference (*iter)
 			SgName* opName = getMethodCalled(func, iterator);
-			if(opName != NULL && (*opName) != SgName("operator*") ){
+			if(opName != NULL && ( *opName) != SgName("operator*") && (*opName) != SgName("operator->") ){
 				printf("iterOp not dereference: %s\n", opName->getString().c_str());
 				validToTransform = false;
 			}
@@ -156,34 +165,34 @@ class SimpleForLoopTraversal : public AstSimpleProcessing{
 	
 private:
 	
-    bool hasValidInitializer(SgNode* node, SgName& containerName, SgName& iteratorName){
+    SgInitializedName* hasValidInitializer(SgNode* node, SgName& containerName, SgName& iteratorName){
 		SgName begin = "begin";
 		
 		// 1. get variable name(or symbol) and check container name and that it calls begin
 		SgVariableDeclaration *initVarDec = isSgVariableDeclaration(node->get_traversalSuccessorContainer()[0]); 
-		if(initVarDec == NULL){return false;}
+		if(initVarDec == NULL){return NULL;}
 		
 		// iterators name 
 	    iteratorName =  initVarDec->get_variables().at(0)->get_name();
 		SgInitializedName* initialisedName = initVarDec->get_variables().at(0);
 	   
 		SgAssignInitializer* assign = isSgAssignInitializer(initialisedName->get_initializer());
-		if(assign == NULL ){ return false;}
+		if(assign == NULL ){ return NULL;}
 		
 		SgFunctionCallExp* func = isSgFunctionCallExp(assign->get_operand()); // ensures we dont get any nesting
-		if(func == NULL){ return false;}
+		if(func == NULL){ return NULL;}
 
 		SgDotExp* dotExp =  isSgDotExp(func->get_function());
-		if(dotExp == NULL){ return false;}
+		if(dotExp == NULL){ return NULL;}
 		
 		SgVarRefExp* lhs = isSgVarRefExp(dotExp->get_lhs_operand());
 		SgMemberFunctionRefExp* rhs = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
-   		if(lhs == NULL || rhs == NULL ){return false;}
-		if(rhs->get_symbol()->get_name() != begin){return false;}
+   		if(lhs == NULL || rhs == NULL ){return NULL;}
+		if(rhs->get_symbol()->get_name() != begin){return NULL;}
 		
 		containerName = lhs->get_symbol()->get_name();
 		
-		return true;
+		return initialisedName;;
 	}
 	
 	bool isMethodCall(SgFunctionCallExp* func, const SgName& containerName,const SgName& methodName){
@@ -339,10 +348,58 @@ private:
 		IteratorUseTraversal iterUseTraversal = IteratorUseTraversal(conName, iterName); // constructor
 		iterUseTraversal.traverse(forNode->get_loop_body(), preorder);
 		
-		return true;
+		return iterUseTraversal.getValidToTransform();
 	}
 
 	inline bool isCompilerGenerated(SgNode *node){return node->get_file_info()->isCompilerGenerated();}
+
+	SgRangeBasedForStatement* constructRangedBasedForLoop(SgName& conName, SgName& iterName, SgForStatement *loopNode){
+		// normal array will be of array type, every STL class vector, map, etc will probably be of class type (don't know what TypedefType is or used for like typedef struct thing)		
+		// get iterator type (assumption being made that the iterator type will have some way of gettin the underlying type)
+		// can just use auto instead to get type,
+		SgInitializedName* iteratorNode =  hasValidInitializer(loopNode->get_for_init_stmt() , conName, iterName);
+		SgType* iteratorType = iteratorNode->get_type();
+		
+		// DEBUG
+		// printf("Type of Iterator: %s, class name: %s\n", iteratorType->unparseToString().c_str(), iteratorType->class_name().c_str());
+		// printf("Has Internal Types %s, base type: %s\n", (iteratorType->containsInternalTypes() ? "true" : "false"), iteratorType->dereference()->class_name().c_str() );
+		// printf("Iter deref Class: %s, TEXT: %s \n",iteratorType->dereference()->unparseToString().c_str(), iteratorType->dereference()->class_name().c_str());
+		// printf("Iter deref^2 Class: %s, TEXT: %s \n",iteratorType->dereference()->dereference()->unparseToString().c_str()
+		// 	   , iteratorType->dereference()->dereference()->class_name().c_str());
+
+		SgVariableDeclaration* varDecl = isSgVariableDeclaration(iteratorNode->get_declaration());
+		
+		// if classType or TypeDefType try and extract type else default to auto
+		// ======================= ======================= =======================
+		// get definition of class which is should be a Templated class
+		if(isSgClassType(iteratorType->dereference()) && isSgTemplateInstantiationDecl(((SgClassType*) iteratorType->dereference())->get_declaration())){
+		    printf("Is Templated Class\n");}else{printf("Is Not Templated Class\n");
+		}
+		// DEBUG
+		if(varDecl != NULL){printf("Variable Declaration specialisation: %s\n", (varDecl->isSpecialization() ?  "true" : "false"));}
+		// ======================= ======================= =======================
+   
+
+		// BUILDING REPLACEMENT FOR LOOP:
+		pushScopeStack(loopNode); // very important to set scope
+		
+		// DEBUG
+		printf("conName: %s\n",conName.getString().c_str());
+		// Initialiser declaration: here is were the type would be extracted from the container is added but just use auto instead
+		SgVariableDeclaration* initializer_var
+			= buildVariableDeclaration(iterName, buildTemplateType("auto"));
+		
+		// Range declaration
+		SgVariableDeclaration* range_var =
+			buildVariableDeclaration("_range", buildTemplateType("auto"), buildAssignInitializer(buildVarRefExp(conName)));
+		
+		/* do not require many of the components of the rangeBasedForStatement to be actually
+		 * added just variable storing elements and the range (container being used)*/
+		SgRangeBasedForStatement* rangeFor =
+			buildRangeBasedForStatement_nfi(initializer_var, range_var, NULL, NULL, NULL, NULL, buildBasicBlock());
+		
+		return rangeFor;
+	}
 	
 public:
 
@@ -356,16 +413,31 @@ public:
 		if(loopNode != NULL && !isCompilerGenerated(loopNode)){
 			printf("=== FOR loop Start ===\n");
 
-			if( isIteratorLoop(loopNode, containerName, iteratorName) ){
-				bool ans = safeForTransform(loopNode, containerName, iteratorName );
+			if( isIteratorLoop(loopNode, containerName, iteratorName) && safeForTransform(loopNode, containerName, iteratorName)){
+				// DEBUG
+				printf("isSafeToTransform: true\n");
+				printf("FOR LOOP FOUND: %s, name: %s, compiler Gen: %s\n"
+					   , loopNode->class_name().c_str()
+					   , loopNode->unparseToString().c_str()
+					   , isCompilerGenerated(loopNode) ? "true" : "false");
+
+				// save old loop body
+				SgStatement* loopBody = loopNode->get_loop_body();
 				
-				if(ans){
-					printf("isSafeToTransform: %s\n", ans ? "true": "false");
-					printf("FOR LOOP FOUND: %s, name: %s, compiler Gen: %s\n"
-						   , loopNode->class_name().c_str()
-						   , loopNode->unparseToString().c_str()
-						   , isCompilerGenerated(loopNode) ? "true" : "false");
-				}
+				// build new ranged for loop
+				SgRangeBasedForStatement* rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
+			    
+				// transform loop body to work with new ranged header
+				
+				IteratorUseTransform iteratorTransform(iteratorName);
+				iteratorTransform.traverse(loopBody, preorder);
+				
+				// change loop body
+				rangeFor->set_loop_body(loopBody);
+				
+				// replace old "for" with new "rangeFor"
+				replaceStatement(loopNode, rangeFor); // actually inserting happens here
+				popScopeStack(); // return scope to whatever it was remove
 				
 			}
 			else if(false){
@@ -380,8 +452,6 @@ public:
 		
 	}
 };
-
-
 
 int main(int argc, char* argv[]){
 
@@ -413,12 +483,12 @@ int main(int argc, char* argv[]){
     for(auto & files: project->get_fileList() ){
 		printf("\t%s\n",files->get_file_info()->get_filename());
     }
-    
+	
     printf("Traversing AST tree:\n");
     // traverse the ast tree
     //SimpleVarDecTraversal traversal;
 	SimpleForLoopTraversal traversal;
 	traversal.traverseInputFiles(project, preorder);
-	
+	//AstTests::runAllTests(project) ;
     return backend(project);
 }
