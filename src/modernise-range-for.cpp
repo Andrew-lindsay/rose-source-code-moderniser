@@ -14,21 +14,43 @@ public:
 	IteratorUseTransform(const SgName& iter){
 		iterator = iter;
 	}
-
+	
 private:
+	
+	void replaceExpressionCheck(SgExpression* currentExp, SgExpression* newExp){
+		
+		if(SgExpression* parentParent = isSgExpression(currentExp->get_parent())){;
+			//if(parentParent == NULL){ printf("Not expression\n");return;}
+				
+			printf("parent node: %s \n", parentParent->unparseToString().c_str());
+			parentParent->replace_expression(currentExp, newExp);
+   
+			printf("Finished repalcement\n");
+					
+		}// expression Statement may not be the only possible statement that is parent of pointerDeref
+		else if(SgExprStatement* exptStmt = isSgExprStatement(currentExp->get_parent())){
+		    printf("Not expression\n");
+			exptStmt->set_expression(newExp);
+			printf("Finished repalcement\n");
+		}else{
+			printf("Conditions not meet no transformation intacted\n");
+		}
+	}
+	
 	/*
 	 * Search for uses of the iterator variable to remove the dereferences or arrow reference 
 	 * from the iterator, iterator in ranged loop takes on values of the container
 	 */
 	void visit(SgNode* node){ // we know that the only uses of variable are deref and arrowexp
 
-		// gets var nodes of the iter that
+		// Target VarRefs of the iterator 
 		if(isSgVarRefExp(node) && ((SgVarRefExp*)node)->get_symbol()->get_name() == iterator){
 	   
 			SgVarRefExp* iterRef = (SgVarRefExp*) node;
 			// parent of instance of iterator variable 
 			SgNode* parentNode = ((SgVarRefExp*)node)->get_parent();
-		   
+
+			// ==== POINTER DEFERENCE ====
 			if(SgPointerDerefExp* ptrDeRef = isSgPointerDerefExp(parentNode)){
 				// remove the pointerDeref node and replace with just the varRefExp node (don't delete the node)
 				printf("Replacing expression\n");
@@ -49,8 +71,8 @@ private:
 					exptStmt->set_expression(iterRef);
 				}
 
-			} // shows up in odd places like overloaded derefence
-			else if(SgArrowExp* arrowExp = isSgArrowExp(parentNode)){
+			} // ==== ARROW DEREFERENCE ==== 
+			else if(SgArrowExp* arrowExp = isSgArrowExp(parentNode)){ // shows up in odd places like overloaded derefence
 				// build dotExp type
 				// replace arrow with dotExp
 				
@@ -63,13 +85,49 @@ private:
 				parentParent->replace_expression(arrowExp, dotExp );   
 				printf("Finished repalcement\n");
 					
-			} // overloaded operators
+			} // ==== OVERLOADED OPERATORS ====
 			else if(SgDotExp* dotExp = isSgDotExp(parentNode)){ 
-
-				// operator*
-
-				// operator->
 				
+				// ensure parent is an DotExp
+				// checking that operator is either -> or * both require the same action
+				// just arrow requires changing arrow to dot as well
+				// need to find the root functionExp that is the overloaded function being used :)
+
+				SgMemberFunctionRefExp*
+					funcMember = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+				
+				// operator* or operator->
+				if(funcMember != NULL && 
+				   (funcMember->get_symbol()->get_name() == "operator*"
+					|| funcMember->get_symbol()->get_name() == "operator->") ){
+
+					SgNode* nodeCheck = dotExp->get_parent();
+
+					// get function call related with call to deference
+					while( !isSgFunctionCallExp(nodeCheck) ){
+						nodeCheck = nodeCheck->get_parent();
+					}
+
+					SgFunctionCallExp* funcExp =  isSgFunctionCallExp(nodeCheck);
+					if(funcExp == NULL){ printf("failed to find Function call\n");return;}
+
+					// find arrow 
+					if(funcMember->get_symbol()->get_name() == "operator->"){
+						SgNode* nodeCheckArrow = funcExp->get_parent();
+						
+						while(!isSgArrowExp(nodeCheckArrow)){
+							nodeCheckArrow = nodeCheckArrow->get_parent();
+						}
+
+						SgArrowExp* arrowBaseExp = isSgArrowExp(nodeCheckArrow);
+						if(arrowBaseExp == NULL){ printf("Expected ArrowExp not found\n");return;}
+
+						replaceExpressionCheck(arrowBaseExp, iterRef); // replace arrowExp
+						
+					}else{
+						replaceExpressionCheck(funcExp, iterRef); // replace funCall
+					}
+				}
 			}
 		}
 	}
