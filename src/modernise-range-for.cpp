@@ -1,5 +1,5 @@
-#include <vector>
 #include "rose.h"
+#include <vector>
 #include <string>
 
 using std::string;
@@ -16,19 +16,63 @@ public:
 	}
 
 private:
-	void visit(SgNode* node){
+	/*
+	 * Search for uses of the iterator variable to remove the dereferences or arrow reference 
+	 * from the iterator, iterator in ranged loop takes on values of the container
+	 */
+	void visit(SgNode* node){ // we know that the only uses of variable are deref and arrowexp
 
-		// need to take into account the overloaded operators again
-		// pointerDerefExp not enough
-		if(SgPointerDerefExp* refExp = isSgPointerDerefExp(node)){
-			
+		// gets var nodes of the iter that
+		if(isSgVarRefExp(node) && ((SgVarRefExp*)node)->get_symbol()->get_name() == iterator){
+	   
+			SgVarRefExp* iterRef = (SgVarRefExp*) node;
+			// parent of instance of iterator variable 
+			SgNode* parentNode = ((SgVarRefExp*)node)->get_parent();
+		   
+			if(SgPointerDerefExp* ptrDeRef = isSgPointerDerefExp(parentNode)){
+				// remove the pointerDeref node and replace with just the varRefExp node (don't delete the node)
+				printf("Replacing expression\n");
+
+				// if the parent of the dereference is not an expression does it have to be a ExprStatement ?(No)
+				// can be in an if statementhtop
+				
+				if(SgExpression* parentParent = isSgExpression(ptrDeRef->get_parent())){;
+					//if(parentParent == NULL){ printf("Not expression\n");return;}
+				
+					printf("parent node of deReference: %s \n", parentParent->unparseToString().c_str());
+					parentParent->replace_expression(ptrDeRef, iterRef);
+   
+					printf("Finished repalcement\n");
+					
+				}// expression Statement may not be the only possible statement that is parent of pointerDeref
+				else if(SgExprStatement* exptStmt = isSgExprStatement(ptrDeRef->get_parent())){
+					exptStmt->set_expression(iterRef);
+				}
+
+			} // shows up in odd places like overloaded derefence
+			else if(SgArrowExp* arrowExp = isSgArrowExp(parentNode)){
+				// build dotExp type
+				// replace arrow with dotExp
+				
+				SgDotExp* dotExp = buildDotExp(iterRef, arrowExp->get_rhs_operand());
+
+				SgExpression* parentParent = isSgExpression(arrowExp->get_parent());
+				if(parentParent == NULL){ printf("Not expression\n");return;}
+				printf("parent node of ArrowExp: %s \n", parentParent->unparseToString().c_str());
+				
+				parentParent->replace_expression(arrowExp, dotExp );   
+				printf("Finished repalcement\n");
+					
+			} // overloaded operators
+			else if(SgDotExp* dotExp = isSgDotExp(parentNode)){ 
+
+				// operator*
+
+				// operator->
+				
+			}
 		}
-		else if(SgArrowExp* arrowExp = isSgArrowExp(node)){
-			
-		}
-		
 	}
-	
 };
 
 
@@ -97,7 +141,8 @@ public:
 		else if(SgFunctionCallExp* func = isSgFunctionCallExp(node)){
 			// detects any Dot method call to the container (container wont be a pointer so no need for arrow)
 			// other types of function calls (need to know format of call)
-		   
+
+			// check container
 			SgName* containerMethod = getMethodCalled(func, container);
 			if(containerMethod != NULL){ // if container has a method call, transform not safe
 				printf("Container Method call: %s.%s\n", container.getString().c_str(),
@@ -109,7 +154,7 @@ public:
 
 			// what about reference then dereference not really an iterator anymore in type ?
 			
-			// only operation on the iterator is a deference (*iter)
+			// only operation on the iterator is a deference (*iter) what about non overloaded deref for arrays<> 
 			SgName* opName = getMethodCalled(func, iterator);
 			if(opName != NULL && ( *opName) != SgName("operator*") && (*opName) != SgName("operator->") ){
 				printf("iterOp not dereference: %s\n", opName->getString().c_str());
@@ -119,7 +164,6 @@ public:
 		}
 	}
 };
-
 
 class InitialConditionTraversal  : public AstSimpleProcessing{
 
@@ -231,45 +275,68 @@ private:
 		//DEBUG
 		//printf("class of NEQ : %s\n",expr->get_expression()->class_name().c_str());
 		
-		// dealing with an over loaded operator due to iterators
-		SgFunctionCallExp* funcOverLoad = isSgFunctionCallExp(expr->get_expression());
-		if(funcOverLoad == NULL){return false;}
+	   	// dealing with an over loaded operator due to iterators
+		if( SgFunctionCallExp* funcOverLoad = isSgFunctionCallExp(expr->get_expression())){
+	
+			SgFunctionRefExp* neqFunc = isSgFunctionRefExp(funcOverLoad->get_function());
 		
-		SgFunctionRefExp* neqFunc = isSgFunctionRefExp(funcOverLoad->get_function());
-		if( !(neqFunc != NULL && neqFunc->get_symbol()->get_name() == "operator!=")){return false;}
+			if( !( neqFunc != NULL && neqFunc->get_symbol()->get_name() == "operator!=")){return false;}
+			
+			if(funcOverLoad->get_args()->get_expressions().size() != 2){ return false;}
 		
-		if(funcOverLoad->get_args()->get_expressions().size() != 2){ return false;}
+			SgVarRefExp* var = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(0) );
+			SgFunctionCallExp* func = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(1));
 		
-		SgVarRefExp* var = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(0) );
-		SgFunctionCallExp* func = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(1));
+			// SgNotEqualOp* neq = isSgNotEqualOp(expr->get_expression()) ;
+			// if(neq == NULL){return false;}
 		
-		// SgNotEqualOp* neq = isSgNotEqualOp(expr->get_expression()) ;
-		// if(neq == NULL){return false;}
+			// DEBUG
+			//printf("class of NEQ FUNC: %s\n", funcOverLoad->get_args()->get_expressions().at(1)->class_name().c_str());	// *somthing* != function
+			//printf("class of NEQ varRef: %s\n",funcOverLoad->get_args()->get_expressions().at(0)->class_name().c_str()); // a != *something*
 		
-		// DEBUG
-		//printf("class of NEQ FUNC: %s\n", funcOverLoad->get_args()->get_expressions().at(1)->class_name().c_str());	// *somthing* != function
-		//printf("class of NEQ varRef: %s\n",funcOverLoad->get_args()->get_expressions().at(0)->class_name().c_str()); // a != *something*
+			if(var != NULL && func != NULL
+			   &&  var->get_symbol()->get_name() == iterName
+			   && isMethodCall(func, containerName, methodNameEnd)){
+				printf("Condition iteratorName: %s\n",var->get_symbol()->get_name().getString().c_str());
+				return true;
+			}
 		
-		if(var != NULL && func != NULL
-		   &&  var->get_symbol()->get_name() == iterName
-		   && isMethodCall(func, containerName, methodNameEnd ) ){
-			printf("Condition iteratorName: %s\n",var->get_symbol()->get_name().getString().c_str());
-			return true;
-		}
-		
-		// check for the args to =! being the oppsite way round
-		SgVarRefExp* varR = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(1) );
-		SgFunctionCallExp* funcL = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(0));
+			// check for the args to =! being the oppsite way round
+			SgVarRefExp* varR = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(1) );
+			SgFunctionCallExp* funcL = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(0));
 													  
-		if( varR != NULL && funcL != NULL
-			&& varR->get_symbol()->get_name() == iterName
-			&& isMethodCall(funcL, containerName, methodNameEnd)){
-			//DEBUG
-			printf("Condition iteratorName: %s\n",varR->get_symbol()->get_name().getString().c_str());
-			return true;
+			if( varR != NULL && funcL != NULL
+				&& varR->get_symbol()->get_name() == iterName
+				&& isMethodCall(funcL, containerName, methodNameEnd)){
+				//DEBUG
+				printf("Condition iteratorName: %s\n",varR->get_symbol()->get_name().getString().c_str());
+				return true;
+			}
+		}// is a non overloaded !=
+		else if (SgNotEqualOp* notEq = isSgNotEqualOp(expr->get_expression())){
+		    
+			SgVarRefExp* iterVar;
+			SgFunctionCallExp* func;
+			printf("NON-overloaded not equals\n");
+			// checking both orderings of the not equals operator
+			if(isSgVarRefExp(notEq->get_lhs_operand())){
+				iterVar = isSgVarRefExp(notEq->get_lhs_operand());
+				func = isSgFunctionCallExp(notEq->get_rhs_operand());
+			}else{
+				func = isSgFunctionCallExp(notEq->get_lhs_operand());
+				iterVar = isSgVarRefExp(notEq->get_rhs_operand());
+			}
+						
+			if( iterVar != NULL && func != NULL
+				&& iterVar->get_symbol()->get_name() == iterName
+				&& isMethodCall(func, containerName, methodNameEnd)){	
+				return true;
+			}
+			
+		}// if not overloaded != or standard != then return false
+		else{
+			return false;
 		}
-		
-	    return false;
 	}
 
 	// iterators have overloaded operators functions !=, ++. ==, etc
@@ -281,16 +348,24 @@ private:
 	bool hasVaildIncrement( SgExpression* incrFor, const SgName& iteratorName){
 
 		// is a function call using overloaded ++ operator
-	    SgFunctionCallExp* funCall = isSgFunctionCallExp(incrFor);
-		if(funCall == NULL){return false;}
-		
-		// check method call is on iterator and is the ++ member operation 
-		if(!isMethodCall(funCall, iteratorName, "operator++")){
+	    if(SgFunctionCallExp* funCall = isSgFunctionCallExp(incrFor)){
+			// check method call is on iterator and is the ++ member operation 
+			if(isMethodCall(funCall, iteratorName, "operator++")){
+				printf("Valid Increment\n");
+				return true;
+			}
+		}
+		else if(SgPlusPlusOp* iterPP = isSgPlusPlusOp(incrFor)) {
+		    SgVarRefExp* iterVar = isSgVarRefExp(iterPP->get_operand());
+			if(iterVar != NULL &&  iterVar->get_symbol()->get_name() == iteratorName){
+				printf("Valid Increment\n");
+				return true;
+			}
+		}
+		else{
+			printf("InValid Increment\n");
 			return false;
 		}
-
-		printf("Valid Increment\n");
-		return true;
 	}
 	
 	/*
@@ -437,8 +512,7 @@ public:
 				
 				// replace old "for" with new "rangeFor"
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
-				popScopeStack(); // return scope to whatever it was remove
-				
+				popScopeStack(); // return scope to whatever it was remove				
 			}
 			else if(false){
 				
