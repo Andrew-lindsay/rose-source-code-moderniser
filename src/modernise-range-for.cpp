@@ -114,7 +114,10 @@ private:
 					// find arrow 
 					if(funcMember->get_symbol()->get_name() == "operator->"){
 						SgNode* nodeCheckArrow = funcExp->get_parent();
-						
+
+						/* in some cases between the overloaded call and the
+						 * arrowExp node there is other things such as cast nodes
+						 */
 						while(!isSgArrowExp(nodeCheckArrow)){
 							nodeCheckArrow = nodeCheckArrow->get_parent();
 						}
@@ -122,7 +125,11 @@ private:
 						SgArrowExp* arrowBaseExp = isSgArrowExp(nodeCheckArrow);
 						if(arrowBaseExp == NULL){ printf("Expected ArrowExp not found\n");return;}
 
-						replaceExpressionCheck(arrowBaseExp, iterRef); // replace arrowExp
+						// build new dot to replace arrow
+						SgDotExp* dotExpNew = buildDotExp(iterRef, arrowBaseExp->get_rhs_operand());
+						
+						
+						replaceExpressionCheck(arrowBaseExp, dotExpNew); // replace arrowExp
 						
 					}else{
 						replaceExpressionCheck(funcExp, iterRef); // replace funCall
@@ -152,7 +159,7 @@ private:
 		
 		SgVarRefExp* lhs = isSgVarRefExp(dotExp->get_lhs_operand());
 		SgMemberFunctionRefExp* rhs = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
-	   
+		
 		//printf("class of dotVar: %s\n", dotExp->get_lhs_operand()->class_name().c_str());
 		//printf("class of dotMemFunc: %s\n", dotExp->get_rhs_operand()->class_name().c_str());
 		
@@ -165,7 +172,6 @@ private:
 		if(lhs->get_symbol()->get_name() == containerName){
 			return new SgName(rhs->get_symbol()->get_name());
 		}
-		
 		return NULL;
 	}
 
@@ -176,6 +182,9 @@ public:
 		iterator = iter;
 	}
 
+	/*
+	 * only to be used after traversing the loop body
+	 */
 	bool getValidToTransform(){
 		return validToTransform;
 	}
@@ -190,36 +199,81 @@ public:
 				
 		SgVarRefExp* varRef = isSgVarRefExp(node);
 		
-		if(varRef != NULL /*&& (varRef->get_symbol()->get_name() == container || varRef->get_symbol()->get_name() == iterator)*/){
-			//printf("Found use of container or iterator: %s\n" , varRef->get_symbol()->get_name().getString().c_str());
-			// check no method calls to container take place 
-			// only operations on the iterator is dereferences
-			
-		}
-		else if(SgFunctionCallExp* func = isSgFunctionCallExp(node)){
-			// detects any Dot method call to the container (container wont be a pointer so no need for arrow)
-			// other types of function calls (need to know format of call)
+		//printf("Found use of container or iterator: %s\n" , varRef->get_symbol()->get_name().getString().c_str());
 
-			// check container
-			SgName* containerMethod = getMethodCalled(func, container);
-			if(containerMethod != NULL){ // if container has a method call, transform not safe
-				printf("Container Method call: %s.%s\n", container.getString().c_str(),
-					   containerMethod->getString().c_str());
+		if(varRef != NULL && varRef->get_symbol()->get_name() == iterator){
+			// check that only uses are dereference normal or overloaded
+			
+			SgNode* parentNode = varRef->get_parent(); // check for compiler gen ? 
+			
+			// pointer Dereference (simple)
+			if(SgPointerDerefExp* ptrDeref = isSgPointerDerefExp(parentNode) ){
+				// do nothing this is okay  
+			}// arrowExp 
+			else if(SgArrowExp* arrowExp = isSgArrowExp(parentNode)) {
+				// allow arrow to pass
+			}// dotexp (overloaded function are of this form)
+			else if(SgDotExp* dotExp = isSgDotExp(parentNode)){
+				// right hand side has to be a member 
+				SgMemberFunctionRefExp* rhsOpCall = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+				// if not method call then 
+				if(rhsOpCall != NULL && ( rhsOpCall->get_symbol()->get_name() == "operator*"
+										   || rhsOpCall->get_symbol()->get_name() == "operator->") ){
+					
+				}else{// if not method call on other side of dot or method call not * or -> not valid
+					validToTransform = false;
+					printf("Invalid Itetator use: line %d, Dot rhs class: %s\n",dotExp->get_rhs_operand()->get_file_info()->get_line(),
+						   dotExp->get_rhs_operand()->class_name().c_str());
+				}
+					
+			}else{
+				// if non of the above then
+				printf("Invalid Itetator use: line %d, parent class: %s\n", parentNode->get_file_info()->get_line(),
+					parentNode->class_name().c_str());
+				validToTransform = false;
+			}
 				
-				validToTransform = false;
+		}// dealing with a container reference
+		// TODO: change to fail if container used at all in loop body
+		else if(varRef != NULL && varRef->get_symbol()->get_name() == container){
+			// if any method call to container, unsafe to transform
+			// what about field access ?
+			SgNode* parentNode = varRef->get_parent();
+			// any function call on container is dangerous 
+			if(SgDotExp* dotExp = isSgDotExp(parentNode)){
+				// right hand side has to be a member 
+				SgMemberFunctionRefExp* rhsOpCall = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+				if(rhsOpCall != NULL){validToTransform = false;}
+				printf("Method used on container: line %d\n",rhsOpCall->get_file_info()->get_line());
 			}
-			delete containerMethod;
-
-			// what about reference then dereference not really an iterator anymore in type ?
-			
-			// only operation on the iterator is a deference (*iter) what about non overloaded deref for arrays<> 
-			SgName* opName = getMethodCalled(func, iterator);
-			if(opName != NULL && ( *opName) != SgName("operator*") && (*opName) != SgName("operator->") ){
-				printf("iterOp not dereference: %s\n", opName->getString().c_str());
-				validToTransform = false;
-			}
-			delete opName;
 		}
+		// check no method calls to container take place -> or . should not be any 
+			
+		//get every function call 
+		// else if(SgFunctionCallExp* func = isSgFunctionCallExp(node)){
+		// 	// detects any Dot method call to the container (container wont be a pointer so no need for arrow)
+		// 	// other types of function calls (need to know format of call)
+
+		// 	// check container
+		// 	SgName* containerMethod = getMethodCalled(func, container);
+		// 	if(containerMethod != NULL){ // if container has a method call, transform not safe
+		// 		printf("Container Method call: %s.%s\n", container.getString().c_str(),
+		// 			   containerMethod->getString().c_str());
+				
+		// 		validToTransform = false;
+		// 	}
+		// 	delete containerMethod;
+
+		// 	// what about reference then dereference not really an iterator anymore in type ?
+			
+		// 	// only operation on the iterator is a deference (*iter) what about non overloaded deref for arrays<> 
+		// 	SgName* opName = getMethodCalled(func, iterator);
+		// 	if(opName != NULL && ( *opName) != SgName("operator*") && (*opName) != SgName("operator->") ){
+		// 		printf("iterOp not dereference: %s\n", opName->getString().c_str());
+		// 		validToTransform = false;
+		// 	}
+		// 	delete opName;
+		// }
 	}
 };
 
