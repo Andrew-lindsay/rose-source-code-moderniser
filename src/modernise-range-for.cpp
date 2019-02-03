@@ -1,6 +1,7 @@
 #include "rose.h"
 #include <vector>
 #include <string>
+#include <utility>
 
 using std::string;
 using namespace SageBuilder;
@@ -131,7 +132,7 @@ private:
 						
 						replaceExpressionCheck(arrowBaseExp, dotExpNew); // replace arrowExp
 						
-					}else{
+					}else{ // if not arrow just dot
 						replaceExpressionCheck(funcExp, iterRef); // replace funCall
 					}
 				}
@@ -214,21 +215,22 @@ public:
 				// allow arrow to pass
 			}// dotexp (overloaded function are of this form)
 			else if(SgDotExp* dotExp = isSgDotExp(parentNode)){
-				// right hand side has to be a member 
+				// right hand side has to be a member function
 				SgMemberFunctionRefExp* rhsOpCall = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
 				// if not method call then 
 				if(rhsOpCall != NULL && ( rhsOpCall->get_symbol()->get_name() == "operator*"
 										   || rhsOpCall->get_symbol()->get_name() == "operator->") ){
-					
+					// do nothing still valid transform
 				}else{// if not method call on other side of dot or method call not * or -> not valid
 					validToTransform = false;
-					printf("Invalid Itetator use: line %d, Dot rhs class: %s\n",dotExp->get_rhs_operand()->get_file_info()->get_line(),
-						   dotExp->get_rhs_operand()->class_name().c_str());
+					printf("Invalid Iterator use: line %d, Dot rhs class: %s\n"
+						   ,dotExp->get_rhs_operand()->get_file_info()->get_line()
+						   ,dotExp->get_rhs_operand()->class_name().c_str());
 				}
 					
 			}else{
 				// if non of the above then
-				printf("Invalid Itetator use: line %d, parent class: %s\n", parentNode->get_file_info()->get_line(),
+				printf("Invalid Iterator use: line %d, parent class: %s\n", parentNode->get_file_info()->get_line(),
 					parentNode->class_name().c_str());
 				validToTransform = false;
 			}
@@ -247,67 +249,48 @@ public:
 				printf("Method used on container: line %d\n",rhsOpCall->get_file_info()->get_line());
 			}
 		}
-		// check no method calls to container take place -> or . should not be any 
-			
-		//get every function call 
-		// else if(SgFunctionCallExp* func = isSgFunctionCallExp(node)){
-		// 	// detects any Dot method call to the container (container wont be a pointer so no need for arrow)
-		// 	// other types of function calls (need to know format of call)
-
-		// 	// check container
-		// 	SgName* containerMethod = getMethodCalled(func, container);
-		// 	if(containerMethod != NULL){ // if container has a method call, transform not safe
-		// 		printf("Container Method call: %s.%s\n", container.getString().c_str(),
-		// 			   containerMethod->getString().c_str());
-				
-		// 		validToTransform = false;
-		// 	}
-		// 	delete containerMethod;
-
-		// 	// what about reference then dereference not really an iterator anymore in type ?
-			
-		// 	// only operation on the iterator is a deference (*iter) what about non overloaded deref for arrays<> 
-		// 	SgName* opName = getMethodCalled(func, iterator);
-		// 	if(opName != NULL && ( *opName) != SgName("operator*") && (*opName) != SgName("operator->") ){
-		// 		printf("iterOp not dereference: %s\n", opName->getString().c_str());
-		// 		validToTransform = false;
-		// 	}
-		// 	delete opName;
-		// }
 	}
 };
 
-class InitialConditionTraversal  : public AstSimpleProcessing{
 
-	bool isValid = false;
-	SgName begin = "begin"; // hopefully can compare SgNames like this!
-	SgName containerName; // if no contianer then empty SgName on completion
+class IndexUseTraversal : public AstSimpleProcessing{
+
+	SgName containter;
+	SgName index;
+	bool validTransform = false;
 	
 public:
-	SgName getContainersName(){
-		return containerName;
+	IndexUseTraversal(const SgName & con, const SgName& indx){
+		this->containter = con;
+		this->index = indx;
 	}
-	
-	bool hasCalledBegin(){
-		return isValid;
-	}
-	
-    void visit(SgNode* node){	
-		SgMemberFunctionRefExp* memberFunc = isSgMemberFunctionRefExp(node);
-		SgVarRefExp* containerRef = isSgVarRefExp(node);
+
+	// should be able to be used by both array transforms
+	void visit(SgNode* node){
+
+		// check for use of index out side of array access 
+
+		// search for container or index they are linked 
 		
-		// has begin method been called (needs to be more general handle pointers to containers)
-		// problem with method call after method call e.g vec.somthing().begin()
-		if(isSgMemberFunctionRefExp(node) && ((SgMemberFunctionRefExp*)node)->get_symbol()->get_name() == begin){
-			isValid = true;
-		}
-		// if our initialiser varDec is of size 1 (one statement) it should
-		// call the containers "begin" method to initialise the iterator. 
-		else if(isSgVarRefExp(node)){ // edit if set dont change ? 
-			containerName = ((SgVarRefExp*) node)->get_symbol()->get_name();
-		}
+		// [] operation
+
+		// .at() operation
+
+		// overloaded [], .operator[]
+		
+		// container.call(index);
+		
+	    if(SgVarRefExp* varRef = isSgVarRefExp(node)){
+			
+		}	
+		
+	}
+
+	bool getValidToTransform(){
+		return validTransform;
 	}
 };
+
 
 
 /*
@@ -398,7 +381,7 @@ private:
 		
 			SgVarRefExp* var = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(0) );
 			SgFunctionCallExp* func = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(1));
-		
+			
 			// SgNotEqualOp* neq = isSgNotEqualOp(expr->get_expression()) ;
 			// if(neq == NULL){return false;}
 		
@@ -498,43 +481,37 @@ private:
 		// Ensure only single vardeclaration om init statement
 		if(initFor->get_traversalSuccessorContainer().size() != 1){ return false;}
 		
-		printf("\tChecking Initializer\n");
+		printf("\tChecking Initializer: Iterator Container\n");
 		if(!hasValidInitializer(initFor, containerName, iteratorName)){return false;}
 		
 		// DEBUG
 		printf("Container Name: %s\n", containerName.getString().c_str());
 		printf("Name of Var %s\n", iteratorName.getString().c_str());
 		
-		printf("\tChecking comparitor\n");
+		printf("\tChecking comparitor: Iterator Container\n");
 		// init variable already declared before for loop maybe a problem 
 		// check (lhs || rhs) is the same variable and the other side is same container calling end
 		if(!hasValidComparitor(testFor, containerName, iteratorName)){return false;}
 		
-		printf("\tChecking Increment\n");
+		printf("\tChecking Increment: Iterator Container\n");
 		if(!hasVaildIncrement( incrFor, iteratorName)){return false;}
 		
 		// needs to be the same container being iterated (adding one may not work for all containers) 
-		
-		// should only be Variable declaration or assignment
-		// get initialiser name 
-		
 		return true;
 	}
 
 	/*
-	 * Used to access the safety of a transformation
+	 * Used to assess the safety of a transformation
 	 *   - checks for uses of the iterator in defined in the initializer
 	 *   - methods are called on the iterator then 
 	 * 
 	 * For loop bodies can contain basic blocks or singe statements this does not 
 	 * matter as we are traversing the entire body 
 	 */
-	bool safeForTransform(SgForStatement *forNode, const SgName& conName, const SgName& iterName){
-
+	bool safeIteratorForTransform(SgForStatement *forNode, const SgName& conName, const SgName& iterName){
 		printf("\tChecking Safe to Transform\n");
 		IteratorUseTraversal iterUseTraversal = IteratorUseTraversal(conName, iterName); // constructor
 		iterUseTraversal.traverse(forNode->get_loop_body(), preorder);
-		
 		return iterUseTraversal.getValidToTransform();
 	}
 
@@ -544,39 +521,33 @@ private:
 		// normal array will be of array type, every STL class vector, map, etc will probably be of class type (don't know what TypedefType is or used for like typedef struct thing)		
 		// get iterator type (assumption being made that the iterator type will have some way of gettin the underlying type)
 		// can just use auto instead to get type,
-		SgInitializedName* iteratorNode =  hasValidInitializer(loopNode->get_for_init_stmt() , conName, iterName);
-		SgType* iteratorType = iteratorNode->get_type();
 		
-		// DEBUG
-		// printf("Type of Iterator: %s, class name: %s\n", iteratorType->unparseToString().c_str(), iteratorType->class_name().c_str());
-		// printf("Has Internal Types %s, base type: %s\n", (iteratorType->containsInternalTypes() ? "true" : "false"), iteratorType->dereference()->class_name().c_str() );
-		// printf("Iter deref Class: %s, TEXT: %s \n",iteratorType->dereference()->unparseToString().c_str(), iteratorType->dereference()->class_name().c_str());
-		// printf("Iter deref^2 Class: %s, TEXT: %s \n",iteratorType->dereference()->dereference()->unparseToString().c_str()
-		// 	   , iteratorType->dereference()->dereference()->class_name().c_str());
-
-		SgVariableDeclaration* varDecl = isSgVariableDeclaration(iteratorNode->get_declaration());
+		// SgInitializedName* iteratorNode =  hasValidInitializer(loopNode->get_for_init_stmt() , conName, iterName);
+		// SgType* iteratorType = iteratorNode->get_type();
+		
+		//SgVariableDeclaration* varDecl = isSgVariableDeclaration(iteratorNode->get_declaration());
 		
 		// if classType or TypeDefType try and extract type else default to auto
 		// ======================= ======================= =======================
 		// get definition of class which is should be a Templated class
-		if(isSgClassType(iteratorType->dereference()) && isSgTemplateInstantiationDecl(((SgClassType*) iteratorType->dereference())->get_declaration())){
-		    printf("Is Templated Class\n");}else{printf("Is Not Templated Class\n");
-		}
+		// if(isSgClassType(iteratorType->dereference()) && isSgTemplateInstantiationDecl(((SgClassType*) iteratorType->dereference())->get_declaration())){
+		//     printf("Is Templated Class\n");}else{printf("Is Not Templated Class\n");
+		// }
 		// DEBUG
-		if(varDecl != NULL){printf("Variable Declaration specialisation: %s\n", (varDecl->isSpecialization() ?  "true" : "false"));}
-		// ======================= ======================= =======================
-   
+		// if(varDecl != NULL){printf("Variable Declaration specialisation: %s\n", (varDecl->isSpecialization() ?  "true" : "false"));}
+		// ======================= ======================= =======================   
 
 		// BUILDING REPLACEMENT FOR LOOP:
 		pushScopeStack(loopNode); // very important to set scope
 		
 		// DEBUG
 		printf("conName: %s\n",conName.getString().c_str());
+		
 		// Initialiser declaration: here is were the type would be extracted from the container is added but just use auto instead
 		SgVariableDeclaration* initializer_var
-			= buildVariableDeclaration(iterName, buildTemplateType("auto"));
+			= buildVariableDeclaration(iterName, buildTemplateType("auto")); // need to add reference operator &
 		
-		// Range declaration
+		// Rangedeclaration
 		SgVariableDeclaration* range_var =
 			buildVariableDeclaration("_range", buildTemplateType("auto"), buildAssignInitializer(buildVarRefExp(conName)));
 		
@@ -587,7 +558,237 @@ private:
 		
 		return rangeFor;
 	}
+// ========================== Array like containers ========================
+
+	bool safeIndexForTransform(SgForStatement *forNode, const SgName& conName, const SgName& iterName){
+		printf("\tChecking Safe to Transform\n");
+		IndexUseTraversal indxUseTraversal = IndexUseTraversal(conName, iterName); // constructor
+	    indxUseTraversal.traverse(forNode->get_loop_body(), preorder);
+		return indxUseTraversal.getValidToTransform();
+	}
 	
+	/*
+	 * Returns method call name of an object 
+	 */
+	std::pair<SgName,SgName> getMethodCall(SgNode* funcExp){
+		// default initialises to ""
+		std::pair<SgName,SgName> methodCall;
+		printf("%s\n", funcExp->class_name().c_str());
+		
+		SgFunctionCallExp* rhsExp = isSgFunctionCallExp(funcExp);
+		if(rhsExp == NULL){ return methodCall;}
+			
+		SgDotExp* dotExp =  isSgDotExp(rhsExp->get_function());
+		if(dotExp == NULL){ return methodCall;}
+		
+		SgVarRefExp* lhsFuncContainer = isSgVarRefExp(dotExp->get_lhs_operand());			
+		SgMemberFunctionRefExp* rhsFuncMethod = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+		
+		if(lhsFuncContainer == NULL || rhsFuncMethod == NULL ){return methodCall;}
+		// checking if function call does use the size call
+		return std::make_pair(lhsFuncContainer->get_symbol()->get_name(),rhsFuncMethod->get_symbol()->get_name());
+	}
+	
+	bool hasVaildSizeComparitor(SgStatement* testFor, SgName& container, const SgName& index){
+		// not expecting overloaded operators and size call should always
+		// return some integer value
+		
+		// can only have dotExp call not arrow, is the container allowed to be a pointer ? 
+		
+		// validate that index it left handside or right handside
+		SgExprStatement* exprCompare = isSgExprStatement(testFor);
+		if(exprCompare == NULL){return false;}
+		
+        // > case
+		if(SgLessThanOp* lessOp = isSgLessThanOp(exprCompare->get_expression())){
+			
+			printf("CLASS LHS: %s \n", lessOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n", lessOp->get_rhs_operand()->class_name().c_str());
+
+			// remove casting
+			SgNode* indexMaybeCast = lessOp->get_lhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(lessOp->get_lhs_operand())){
+				indexMaybeCast = castExp->get_operand();
+			}
+	 
+			SgVarRefExp* lhsIndex = isSgVarRefExp(indexMaybeCast);
+			
+			if(lhsIndex == NULL || lhsIndex->get_symbol()->get_name() != index){return false;}
+			// check index matches 
+
+			SgNode* funcExp = lessOp->get_rhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(lessOp->get_rhs_operand())){
+				funcExp = castExp->get_operand();
+			}
+			
+			std::pair<SgName,SgName> methodCall = getMethodCall(funcExp);
+			
+			printf("METHODCALL: %s, %s\n", methodCall.first.getString().c_str(),
+				   methodCall.second.getString().c_str());
+				
+			if(methodCall.second == "size"){
+				container = methodCall.first;
+				printf("Success Less Than\n");
+				return true;
+			}else{
+				printf("Fail Less Than\n");
+				return false;
+			}
+			
+		}// < case
+		else if(SgGreaterThanOp* greaterOp = isSgGreaterThanOp((exprCompare->get_expression()))){
+
+			printf("CLASS LHS: %s \n", greaterOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n", greaterOp->get_rhs_operand()->class_name().c_str());
+			
+			SgNode* indexMaybeCast = greaterOp->get_rhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(greaterOp->get_rhs_operand())){
+				indexMaybeCast = castExp->get_operand();
+			}
+			
+			SgVarRefExp* rhsIndex = isSgVarRefExp(indexMaybeCast);
+			if(rhsIndex == NULL || rhsIndex->get_symbol()->get_name() != index){return false;}
+			// check index matches 
+
+			SgNode* funcExp = greaterOp->get_lhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(greaterOp->get_lhs_operand())){
+				funcExp = castExp->get_operand();
+			}
+			
+			std::pair<SgName,SgName> methodCall = getMethodCall(funcExp);
+
+			printf("METHODCALL: %s, %s\n", methodCall.first.getString().c_str(),
+				   methodCall.second.getString().c_str());
+			
+			if(methodCall.second == "size"){
+				container = methodCall.first;
+				printf("Success Greater Than\n");
+				return true;
+			}else{
+				printf("Fail Greater Than\n");
+				return false;
+			}
+			
+		}// != case (TRUE MAYBE)
+		else if(SgNotEqualOp* notEqualOp = isSgNotEqualOp(exprCompare->get_expression())){
+			// === remove casting === 
+			SgNode* leftNode = notEqualOp->get_lhs_operand();
+			SgNode* rightNode = notEqualOp->get_rhs_operand();
+			
+			if(SgCastExp* castExp = isSgCastExp(leftNode)){
+			    leftNode = castExp->get_operand();
+			}
+
+			if(SgCastExp* castExp = isSgCastExp(rightNode)){
+			    rightNode = castExp->get_operand();
+			}
+
+			SgVarRefExp* indexRef;
+			SgNode* funcCall; 
+
+			printf("CLASS LHS: %s \n", notEqualOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n", notEqualOp->get_rhs_operand()->class_name().c_str());
+			
+			// check index in lhs
+			if(isSgVarRefExp(leftNode)){
+				indexRef = isSgVarRefExp(leftNode);
+				funcCall = rightNode;
+			}// check index in rhs
+			else{
+				indexRef = isSgVarRefExp(rightNode);
+				funcCall = leftNode;
+			}
+
+			// indexRef matches index in initialiser
+			if(indexRef == NULL || indexRef->get_symbol()->get_name() != index){return false;}
+			
+			// remove casting if there
+			if(SgCastExp* castExp = isSgCastExp(funcCall)){
+				funcCall = castExp->get_operand();
+			}
+			
+			std::pair<SgName,SgName> methodCall = getMethodCall(funcCall);
+			
+			printf("METHODCALL: %s, %s\n", methodCall.first.getString().c_str(),
+				   methodCall.second.getString().c_str());
+				
+			if(methodCall.second == "size"){
+				container = methodCall.first;
+				printf("Success NotEqual Than\n");
+				return true;
+			}else{
+				printf("Fail NotEqual Than\n");
+				return false;
+			}
+		}
+		
+		return false;
+	}
+	
+	bool hasValidIndexInitialiser(SgForInitStatement* initFor, SgName& index){
+		// get first varDec
+		SgVariableDeclaration* varDecInit = isSgVariableDeclaration(initFor->get_init_stmt().at(0));
+		if(varDecInit == NULL and varDecInit->get_variables().size() >= 1){return false;}
+
+		SgInitializedName*  initName = varDecInit->get_variables().at(0);
+		index = initName->get_name();// set index name
+
+		SgAssignInitializer* assignInit =  isSgAssignInitializer(initName->get_initializer());
+		if(assignInit == NULL){return false;}
+
+		// handle casting of values expressions 
+		SgNode* valNode = assignInit->get_operand();
+		if(SgCastExp* castExp = isSgCastExp(assignInit->get_operand())){
+			valNode = castExp->get_operand();
+		}
+
+		SgValueExp* val = isSgValueExp(valNode);
+		
+		if( !isSgDoubleVal(val) && !isSgFloatVal(val) && !isSgLongDoubleVal(val) ){
+			printf("checking val\n");
+			if(getIntegerConstantValue(val) == 0){
+				printf("VALID: Initialiser\n");
+				return true;
+			}else{return false;}
+		}
+		else{
+			return false;
+		}
+	}
+	
+	bool isArraySizeLoop(SgForStatement* forLoopNode, SgName& container, SgName& index ){
+
+		SgForInitStatement* initFor = forLoopNode->get_for_init_stmt();
+		SgStatement* testFor = forLoopNode->get_test();
+		SgExpression* incrFor = forLoopNode->get_increment();
+		
+		// Ensure only single vardeclaration in init statement
+		if(initFor->get_traversalSuccessorContainer().size() != 1){ return false;}
+		
+		printf("\tChecking Initializer: Array container\n"); // sets index
+		if(!hasValidIndexInitialiser(initFor, index)){return false;};
+		
+		// DEBUG
+		printf("Name of Index: %s\n", index.getString().c_str());
+		
+		printf("\tChecking comparitor: Array container\n");
+		// sets container name 
+		if(!hasVaildSizeComparitor(testFor, container, index) ){return false;}
+		printf("Container Name: %s\n", container.getString().c_str());
+
+		printf("\tChecking Increment: Array container\n");
+		if(!hasVaildIncrement( incrFor, index)){return false;}
+		
+		// needs to be the same container being iterated (adding one may not work for all containers) 
+		
+		// should only be Variable declaration or assignment
+		// get initialiser name 
+		
+		return true;
+		
+	}
+	
+// =========================================================================
 public:
 
 	void visit(SgNode *node){
@@ -600,7 +801,8 @@ public:
 		if(loopNode != NULL && !isCompilerGenerated(loopNode)){
 			printf("=== FOR loop Start ===\n");
 
-			if( isIteratorLoop(loopNode, containerName, iteratorName) && safeForTransform(loopNode, containerName, iteratorName)){
+			if( isIteratorLoop(loopNode, containerName, iteratorName)
+				&& safeIteratorForTransform(loopNode, containerName, iteratorName)){
 				// DEBUG
 				printf("isSafeToTransform: true\n");
 				printf("FOR LOOP FOUND: %s, name: %s, compiler Gen: %s\n"
@@ -626,7 +828,8 @@ public:
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove				
 			}
-			else if(false){
+			else if(isArraySizeLoop(loopNode, containerName, iteratorName)
+					&& safeIndexForTransform(loopNode, containerName, iteratorName) ){
 				
 			}
 			else if(false){
