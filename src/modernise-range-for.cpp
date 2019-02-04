@@ -1,3 +1,4 @@
+
 #include "rose.h"
 #include <vector>
 #include <string>
@@ -255,35 +256,107 @@ public:
 
 class IndexUseTraversal : public AstSimpleProcessing{
 
-	SgName containter;
+	SgName container;
 	SgName index;
 	bool validTransform = false;
+
+	std::pair<SgName,SgName> getMethodCall(SgNode* funcExp){
+		// default initialises to ""
+		std::pair<SgName,SgName> methodCall;
+		printf("%s\n", funcExp->class_name().c_str());
+		
+		SgFunctionCallExp* rhsExp = isSgFunctionCallExp(funcExp);
+		if(rhsExp == NULL){ return methodCall;}
+			
+		SgDotExp* dotExp =  isSgDotExp(rhsExp->get_function());
+		if(dotExp == NULL){ return methodCall;}
+		
+		SgVarRefExp* lhsFuncContainer = isSgVarRefExp(dotExp->get_lhs_operand());			
+		SgMemberFunctionRefExp* rhsFuncMethod = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+		
+		if(lhsFuncContainer == NULL || rhsFuncMethod == NULL ){return methodCall;}
+		// checking if function call does use the size call
+		return std::make_pair(lhsFuncContainer->get_symbol()->get_name(),rhsFuncMethod->get_symbol()->get_name());
+	}
 	
 public:
 	IndexUseTraversal(const SgName & con, const SgName& indx){
-		this->containter = con;
+		this->container = con;
 		this->index = indx;
 	}
 
+	// will be removing the index with the element of the array  
 	// should be able to be used by both array transforms
 	void visit(SgNode* node){
 
 		// check for use of index out side of array access 
-
+		
 		// search for container or index they are linked 
 		
 		// [] operation
 
 		// .at() operation
-
+		
 		// overloaded [], .operator[]
+
+		// CHECK 2: only calls to the container are at() and [] 
 		
-		// container.call(index);
+		// CHECK 1: container.call(index);
+		//     check index is inside an appropriate operator [] at or operator[] 
+		//     then check that the function call taking place is an 
+
+		// SgPntrArrRefExp
+		SgVarRefExp* varRef = isSgVarRefExp(node);
 		
-	    if(SgVarRefExp* varRef = isSgVarRefExp(node)){
+	    if(varRef != NULL && varRef->get_symbol()->get_name() == index){
+
+			// remove casting
+			SgNode* parentOfVar = varRef->get_parent();
+			if(SgCastExp* castExp = isSgCastExp(parentOfVar)){
+				parentOfVar = castExp->get_parent();
+			}
+
+			// is and overloaded operator at or []
+			if(SgExprListExp* funcArgs =  isSgExprListExp(parentOfVar)){
+					
+				std::pair<SgName,SgName> funCall = getMethodCall(funcArgs->get_parent());
+
+				// if not the container specified in the loop header error if it is only
+				// methods allowed to be called are [] or at
+				if(funCall.first != container
+				   ||  !(funCall.second == "operator[]" || funCall.second == "at")){
+				    validTransform = false;
+				}
+				
+			}// is a non overloaded array [] 
+			else if(SgPntrArrRefExp* arrAccess = isSgPntrArrRefExp(parentOfVar)){
+				
+				SgVarRefExp* conRef = isSgVarRefExp(arrAccess->get_lhs_operand());
+				
+			    if(conRef == NULL || conRef->get_symbol()->get_name() != container){
+					validTransform = false;
+				}
 			
-		}	
-		
+			}
+			else{
+				validTransform = false;
+			}
+			
+		} // container check, only calls to the container are at() and []
+		else if(varRef != NULL && varRef->get_symbol()->get_name() == container){
+
+			SgDotExp* dotExp = isSgDotExp(varRef->get_parent());
+			if(dotExp == NULL){return;}
+
+		    SgMemberFunctionRefExp* memberF
+				= isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+				
+			if(memberF == NULL
+			   || !( memberF->get_symbol()->get_name() == "at"
+					 || memberF->get_symbol()->get_name() == "operator[]")){
+				   validTransform = false;
+			}
+		}
 	}
 
 	bool getValidToTransform(){
@@ -300,7 +373,7 @@ public:
  *   3. array like containers using operators [] and at()
  *   NOTE: keep implementation simple
  */
-class SimpleForLoopTraversal : public AstSimpleProcessing{
+class ForLoopTraversal : public AstSimpleProcessing{
 	
 private:
 	
@@ -570,7 +643,7 @@ private:
 	/*
 	 * Returns method call name of an object 
 	 */
-	std::pair<SgName,SgName> getMethodCall(SgNode* funcExp){
+	static std::pair<SgName,SgName> getMethodCall(SgNode* funcExp){
 		// default initialises to ""
 		std::pair<SgName,SgName> methodCall;
 		printf("%s\n", funcExp->class_name().c_str());
@@ -876,7 +949,7 @@ int main(int argc, char* argv[]){
     printf("Traversing AST tree:\n");
     // traverse the ast tree
     //SimpleVarDecTraversal traversal;
-	SimpleForLoopTraversal traversal;
+	ForLoopTraversal traversal;
 	traversal.traverseInputFiles(project, preorder);
 	//AstTests::runAllTests(project) ;
     return backend(project);
