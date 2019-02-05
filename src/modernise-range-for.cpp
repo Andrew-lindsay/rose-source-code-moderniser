@@ -26,7 +26,6 @@ private:
 				
 			printf("parent node: %s \n", parentParent->unparseToString().c_str());
 			parentParent->replace_expression(currentExp, newExp);
-   
 			printf("Finished repalcement\n");
 					
 		}// expression Statement may not be the only possible statement that is parent of pointerDeref
@@ -232,7 +231,7 @@ public:
 			}else{
 				// if non of the above then
 				printf("Invalid Iterator use: line %d, parent class: %s\n", parentNode->get_file_info()->get_line(),
-					parentNode->class_name().c_str());
+					   parentNode->class_name().c_str());
 				validToTransform = false;
 			}
 				
@@ -247,23 +246,74 @@ public:
 				// right hand side has to be a member 
 				SgMemberFunctionRefExp* rhsOpCall = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
 				if(rhsOpCall != NULL){validToTransform = false;}
-				printf("Method used on container: line %d\n",rhsOpCall->get_file_info()->get_line());
+				printf("Method used on container: line %d\n", rhsOpCall->get_file_info()->get_line());
 			}
 		}
 	}
 };
 
 
+/*
+ * Aim: To transform the the uses of the container con.at(indx) 
+ * or con[indx] non overloaded con[idx]
+ * 
+ */
+class IndexUseTransform : public AstSimpleProcessing{
+
+	SgName container;
+	SgName index;
+	
+public:
+
+	IndexUseTransform(SgName& con, SgName& indx){
+		container = con;
+		index = indx;
+	}
+	
+	void visit(SgNode* node){
+
+		// check if function call
+
+		// check if normal ptnrArrayAccess
+		
+		SgVarRefExp* varRef = isSgVarRefExp(node);
+		
+		if(varRef != NULL && varRef->get_symbol()->get_name() == container){
+
+			SgNode* parentNd = varRef->get_parent();
+
+			if(SgDotExp* dotExp = isSgDotExp(parentNd)){
+				// we know container only calls at or []  
+				// aim to transform con.at(indx) and con[idx] to indx
+
+				SgFunctionCallExp* funcCall = isSgFunctionCallExp(dotExp->get_parent());
+				if(funcCall == NULL){return;} // sanity check
+
+				// scope needs altered
+				pushScopeStack(getEnclosingScope(varRef));
+				
+				replaceExpression(funcCall, buildVarRefExp(index));
+				
+				popScopeStack();
+			}
+			else if(SgPntrArrRefExp* arrAccess = isSgPntrArrRefExp(parentNd)){
+
+			}
+		}
+		
+	}
+};
+
 class IndexUseTraversal : public AstSimpleProcessing{
 
 	SgName container;
 	SgName index;
-	bool validTransform = false;
+	bool validTransform = true;
 
 	std::pair<SgName,SgName> getMethodCall(SgNode* funcExp){
 		// default initialises to ""
 		std::pair<SgName,SgName> methodCall;
-		printf("%s\n", funcExp->class_name().c_str());
+		printf("getMethodCall of: %s\n", funcExp->class_name().c_str());
 		
 		SgFunctionCallExp* rhsExp = isSgFunctionCallExp(funcExp);
 		if(rhsExp == NULL){ return methodCall;}
@@ -325,6 +375,7 @@ public:
 				// methods allowed to be called are [] or at
 				if(funCall.first != container
 				   ||  !(funCall.second == "operator[]" || funCall.second == "at")){
+					printf("Container not match loop test or method call not [] or at");
 				    validTransform = false;
 				}
 				
@@ -334,27 +385,36 @@ public:
 				SgVarRefExp* conRef = isSgVarRefExp(arrAccess->get_lhs_operand());
 				
 			    if(conRef == NULL || conRef->get_symbol()->get_name() != container){
+					printf("Container does not match, for loop test\n");
 					validTransform = false;
 				}
-			
 			}
 			else{
+				//DEBUG
+				printf("INVALID: VarRef index parents node class: %s\n",parentOfVar->class_name().c_str());
 				validTransform = false;
 			}
 			
 		} // container check, only calls to the container are at() and []
 		else if(varRef != NULL && varRef->get_symbol()->get_name() == container){
 
-			SgDotExp* dotExp = isSgDotExp(varRef->get_parent());
-			if(dotExp == NULL){return;}
-
-		    SgMemberFunctionRefExp* memberF
-				= isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+			// uses of container in other expressions contianer + 1 etc (possible with pointers)
+			SgNode* parentN = varRef->get_parent();
+			
+			if(SgDotExp* dotExp = isSgDotExp(varRef->get_parent())){
+		
+				SgMemberFunctionRefExp* memberF
+					= isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
 				
-			if(memberF == NULL
-			   || !( memberF->get_symbol()->get_name() == "at"
-					 || memberF->get_symbol()->get_name() == "operator[]")){
-				   validTransform = false;
+				if(memberF == NULL
+				   || !( memberF->get_symbol()->get_name() == "at"
+						 || memberF->get_symbol()->get_name() == "operator[]")){
+					printf("Container method NULL or called illegal method\n");
+					validTransform = false;
+				}
+			}// if container used in any other expression that is not a function call
+			else{
+				//validTransform = false;
 			}
 		}
 	}
@@ -393,7 +453,7 @@ private:
 		
 		SgFunctionCallExp* func = isSgFunctionCallExp(assign->get_operand()); // ensures we dont get any nesting
 		if(func == NULL){ return NULL;}
-
+		
 		SgDotExp* dotExp =  isSgDotExp(func->get_function());
 		if(dotExp == NULL){ return NULL;}
 		
@@ -500,7 +560,6 @@ private:
 				&& isMethodCall(func, containerName, methodNameEnd)){	
 				return true;
 			}
-			
 		}// if not overloaded != or standard != then return false
 		else{
 			return false;
@@ -637,6 +696,11 @@ private:
 		printf("\tChecking Safe to Transform\n");
 		IndexUseTraversal indxUseTraversal = IndexUseTraversal(conName, iterName); // constructor
 	    indxUseTraversal.traverse(forNode->get_loop_body(), preorder);
+	    if(indxUseTraversal.getValidToTransform()){
+			printf("save to transform\n");
+		}else{
+			printf("NOT to transform\n");
+		}
 		return indxUseTraversal.getValidToTransform();
 	}
 	
@@ -858,7 +922,6 @@ private:
 		// get initialiser name 
 		
 		return true;
-		
 	}
 	
 // =========================================================================
@@ -889,8 +952,7 @@ public:
 				// build new ranged for loop
 				SgRangeBasedForStatement* rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
 			    
-				// transform loop body to work with new ranged header
-				
+				// transform loop body to work with new ranged header				
 				IteratorUseTransform iteratorTransform(iteratorName);
 				iteratorTransform.traverse(loopBody, preorder);
 				
@@ -903,7 +965,18 @@ public:
 			}
 			else if(isArraySizeLoop(loopNode, containerName, iteratorName)
 					&& safeIndexForTransform(loopNode, containerName, iteratorName) ){
+
+				SgStatement* loopBody = loopNode->get_loop_body();
 				
+				SgRangeBasedForStatement* rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
+
+				IndexUseTransform indexUseTransform(containerName, iteratorName);
+				indexUseTransform.traverse(loopBody, preorder);
+				
+				rangeFor->set_loop_body(loopBody);
+
+				replaceStatement(loopNode, rangeFor); // actually inserting happens here
+				popScopeStack(); // return scope to whatever it was remove
 			}
 			else if(false){
 
@@ -911,7 +984,6 @@ public:
 			
 			printf("======================\n");
 		}
-		
 	}
 };
 
