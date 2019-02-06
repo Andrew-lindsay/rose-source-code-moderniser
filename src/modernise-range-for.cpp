@@ -128,8 +128,7 @@ private:
 
 						// build new dot to replace arrow
 						SgDotExp* dotExpNew = buildDotExp(iterRef, arrowBaseExp->get_rhs_operand());
-						
-						
+
 						replaceExpressionCheck(arrowBaseExp, dotExpNew); // replace arrowExp
 						
 					}else{ // if not arrow just dot
@@ -269,6 +268,25 @@ public:
 		container = con;
 		index = indx;
 	}
+
+	void replaceExpressionCheck(SgExpression* currentExp, SgExpression* newExp){
+		
+		if(SgExpression* parentParent = isSgExpression(currentExp->get_parent())){;
+			//if(parentParent == NULL){ printf("Not expression\n");return;}
+				
+			printf("parent node: %s \n", parentParent->unparseToString().c_str());
+			parentParent->replace_expression(currentExp, newExp);
+			printf("Finished repalcement\n");
+					
+		}// expression Statement may not be the only possible statement that is parent of pointerDeref
+		else if(SgExprStatement* exptStmt = isSgExprStatement(currentExp->get_parent())){
+		    printf("Not expression\n");
+			exptStmt->set_expression(newExp);
+			printf("Finished repalcement\n");
+		}else{
+			printf("Conditions not meet no transformation intacted\n");
+		}
+	}
 	
 	void visit(SgNode* node){
 
@@ -286,21 +304,34 @@ public:
 				// we know container only calls at or []  
 				// aim to transform con.at(indx) and con[idx] to indx
 
+				// transform only if the index in at() or []
 				SgFunctionCallExp* funcCall = isSgFunctionCallExp(dotExp->get_parent());
 				if(funcCall == NULL){return;} // sanity check
 
-				// scope needs altered
-				pushScopeStack(getEnclosingScope(varRef));
 				
-				replaceExpression(funcCall, buildVarRefExp(index));
+				// check exprList that length 1 and its varRef of index
+				SgExpressionPtrList argsL = funcCall->get_args()->get_expressions();
+				if(argsL.size() != 1){return;}
 				
-				popScopeStack();
+				// remove cast
+				SgNode* expInList = argsL.at(0);
+				if(SgCastExp* castExp = isSgCastExp(expInList)){
+					expInList = castExp->get_operand();
+				}
+				
+				// replace expression if index matches
+				if( SgVarRefExp* argIndex = isSgVarRefExp(expInList)){
+					if(argIndex->get_symbol()->get_name() != index){return;}
+					replaceExpressionCheck(funcCall, buildVarRefExp(index));
+				}
 			}
 			else if(SgPntrArrRefExp* arrAccess = isSgPntrArrRefExp(parentNd)){
 
+				SgVarRefExp* isIndex = isSgVarRefExp(arrAccess->get_rhs_operand());
+				
+				replaceExpressionCheck(arrAccess, buildVarRefExp(index));
 			}
 		}
-		
 	}
 };
 
@@ -354,8 +385,7 @@ public:
 		// CHECK 1: container.call(index);
 		//     check index is inside an appropriate operator [] at or operator[] 
 		//     then check that the function call taking place is an 
-
-		// SgPntrArrRefExp
+		
 		SgVarRefExp* varRef = isSgVarRefExp(node);
 		
 	    if(varRef != NULL && varRef->get_symbol()->get_name() == index){
@@ -378,8 +408,8 @@ public:
 					printf("Container not match loop test or method call not [] or at");
 				    validTransform = false;
 				}
-				
-			}// is a non overloaded array [] 
+
+			}// is a non overloaded array [] SgPntrArrRefExp
 			else if(SgPntrArrRefExp* arrAccess = isSgPntrArrRefExp(parentOfVar)){
 				
 				SgVarRefExp* conRef = isSgVarRefExp(arrAccess->get_lhs_operand());
@@ -405,7 +435,7 @@ public:
 		
 				SgMemberFunctionRefExp* memberF
 					= isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
-				
+				// if not container fuction call to [] or at error
 				if(memberF == NULL
 				   || !( memberF->get_symbol()->get_name() == "at"
 						 || memberF->get_symbol()->get_name() == "operator[]")){
