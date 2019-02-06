@@ -8,6 +8,7 @@ using std::string;
 using namespace SageBuilder;
 using namespace SageInterface;
 
+// ====================== ITERATOR ===================================
 class IteratorUseTransform : public AstSimpleProcessing{
 	
     SgName iterator;
@@ -140,7 +141,6 @@ private:
 	}
 };
 
-
 class IteratorUseTraversal : public AstSimpleProcessing{
 
     SgName container;
@@ -153,7 +153,7 @@ private:
 	 */
     SgName* getMethodCalled(SgFunctionCallExp* func, const SgName& containerName){
 
-		//printf("class of func: %s\n", func->get_function()->class_name().c_str());
+		// printf("class of func: %s\n", func->get_function()->class_name().c_str());
 		SgDotExp* dotExp =  isSgDotExp(func->get_function());
 		if(dotExp == NULL){ return NULL;}
 		
@@ -250,8 +250,10 @@ public:
 		}
 	}
 };
+// ===================================================================================================
 
 
+// ============================== INDEX Size ===================================================== 
 /*
  * Aim: To transform the the uses of the container con.at(indx) 
  * or con[indx] non overloaded con[idx]
@@ -307,7 +309,6 @@ public:
 				// transform only if the index in at() or []
 				SgFunctionCallExp* funcCall = isSgFunctionCallExp(dotExp->get_parent());
 				if(funcCall == NULL){return;} // sanity check
-
 				
 				// check exprList that length 1 and its varRef of index
 				SgExpressionPtrList argsL = funcCall->get_args()->get_expressions();
@@ -369,16 +370,6 @@ public:
 	// will be removing the index with the element of the array  
 	// should be able to be used by both array transforms
 	void visit(SgNode* node){
-
-		// check for use of index out side of array access 
-		
-		// search for container or index they are linked 
-		
-		// [] operation
-
-		// .at() operation
-		
-		// overloaded [], .operator[]
 
 		// CHECK 2: only calls to the container are at() and [] 
 		
@@ -454,8 +445,58 @@ public:
 	}
 };
 
+// ====================================================================================================
 
+// ======================================== STATIC ARRAY INDEX ========================================
 
+/*
+ * Ensures that only one container is indexed and finds its size
+ * need to store name of container and find its size 
+ * 
+ * should it also ensure that the loopBody is safe to transform
+ * Aim to just extract contrainer name 
+ */
+class ValidArrayIndexTraversal : public AstSimpleProcessing{
+
+	SgName index;
+	SgName container;
+	bool valid = false;
+public:
+
+	ValidArrayIndexTraversal(const SgName& indx){
+		index = indx;
+	}
+
+	bool isValid(){
+		return false;
+	}
+   
+    SgName getContainerName(){
+		return container;
+	}
+	
+	void visit(SgNode* node){
+
+		if(SgPntrArrRefExp* arrAccess = isSgPntrArrRefExp(node)){
+
+			SgVarRefExp* containerVar = isSgVarRefExp( arrAccess->get_lhs_operand());
+			SgVarRefExp* indexVar = isSgVarRefExp(arrAccess->get_rhs_operand());
+
+			if(indexVar != NULL && containerVar != NULL
+			   && indexVar->get_symbol()->get_name() == index){
+				if(container == ""){
+					container = containerVar->get_symbol()->get_name();
+					valid = true;
+				}// container has been set so check if same as previous container
+				else if(container != containerVar->get_symbol()->get_name()) {
+					valid = false;
+				}
+			}
+		}
+	}
+};
+
+// ====================================================================================================
 /*
  * Detects the 3 standard uses of for loops and transforms them to ranged for loops 
  *   1. statically allocated 
@@ -471,7 +512,8 @@ private:
 		SgName begin = "begin";
 		
 		// 1. get variable name(or symbol) and check container name and that it calls begin
-		SgVariableDeclaration *initVarDec = isSgVariableDeclaration(node->get_traversalSuccessorContainer()[0]); 
+		SgVariableDeclaration *initVarDec
+			= isSgVariableDeclaration(node->get_traversalSuccessorContainer()[0]); 
 		if(initVarDec == NULL){return NULL;}
 		
 		// iterators name 
@@ -887,8 +929,7 @@ private:
 				printf("Fail NotEqual Than\n");
 				return false;
 			}
-		}
-		
+		}		
 		return false;
 	}
 	
@@ -955,6 +996,57 @@ private:
 	}
 	
 // =========================================================================
+	
+// ==================Statically allocated array for loop====================
+	
+	bool hasVaildBasicComparitor(SgStatement* testFor, int sizeOfContainer, SgName& index){
+
+		// don't know the target containers are its size, need both		
+		
+		// Will have index from the isIntializer  
+		
+		// Comparitor of form index < size, size > index, size != index, index != size
+		
+	}
+	
+	bool isBasicArrayLoop(SgForStatement* forLoopNode, SgName& container, SgName& index ){
+		
+		SgForInitStatement* initFor = forLoopNode->get_for_init_stmt();
+		SgStatement* testFor = forLoopNode->get_test();
+		SgExpression* incrFor = forLoopNode->get_increment();
+		
+		// Ensure only single vardeclaration in init statement
+		if(initFor->get_traversalSuccessorContainer().size() != 1){ return false;}
+		
+		printf("\tChecking Initializer: Array container\n"); // sets index
+		if(!hasValidIndexInitialiser(initFor, index)){return false;};
+
+		// traverse loop body to get the container used also its size to check in comparitor check
+
+		// return "" string if invalid or have internal variable 
+		
+		int sizeOfContainer = 0;
+		
+		
+		// DEBUG
+		printf("Name of Index: %s\n", index.getString().c_str());
+		
+		printf("\tChecking comparitor: Array container\n");
+		
+		// sets container name 
+		if(!hasVaildBasicComparitor(testFor, sizeOfContainer, index) ){return false;}
+		printf("Container Name: %s\n", container.getString().c_str());
+
+		printf("\tChecking Increment: Array container\n");
+		if(!hasVaildIncrement(incrFor, index)){return false;}
+		
+		// needs to be the same container being iterated (adding one may not work for all containers) 
+		
+		// should only be Variable declaration or assignment
+		// get initialiser name 		
+	}
+// =========================================================================
+
 public:
 
 	void visit(SgNode *node){
@@ -967,6 +1059,7 @@ public:
 		if(loopNode != NULL && !isCompilerGenerated(loopNode)){
 			printf("=== FOR loop Start ===\n");
 
+			// Iterators for conatiners
 			if( isIteratorLoop(loopNode, containerName, iteratorName)
 				&& safeIteratorForTransform(loopNode, containerName, iteratorName)){
 				// DEBUG
@@ -991,8 +1084,9 @@ public:
 				
 				// replace old "for" with new "rangeFor"
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
-				popScopeStack(); // return scope to whatever it was remove				
-			}
+				popScopeStack(); // return scope to whatever it was remove
+				
+			}// array like containers using operators [] and at()			
 			else if(isArraySizeLoop(loopNode, containerName, iteratorName)
 					&& safeIndexForTransform(loopNode, containerName, iteratorName) ){
 
@@ -1007,8 +1101,10 @@ public:
 
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove
-			}
-			else if(false){
+				
+			}// statically allocated
+			else if(isBasicArrayLoop(loopNode, containerName, iteratorName) ){
+				
 
 			}
 			
