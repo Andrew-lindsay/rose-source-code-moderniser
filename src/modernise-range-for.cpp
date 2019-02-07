@@ -396,7 +396,7 @@ public:
 				// methods allowed to be called are [] or at
 				if(funCall.first != container
 				   ||  !(funCall.second == "operator[]" || funCall.second == "at")){
-					printf("Container not match loop test or method call not [] or at");
+					printf("Container not match loop test or method call not [] or at\n");
 				    validTransform = false;
 				}
 
@@ -461,6 +461,7 @@ class ValidArrayIndexTraversal : public AstSimpleProcessing{
 	SgName index;
 	SgName container;
 	bool valid = false;
+	unsigned long long int sizeOfArray = 0;
 public:
 
 	ValidArrayIndexTraversal(const SgName& indx){
@@ -468,7 +469,11 @@ public:
 	}
 
 	bool isValid(){
-		return false;
+		return valid;
+	}
+
+	unsigned long long int getContainerSize(){
+		return sizeOfArray;
 	}
    
     SgName getContainerName(){
@@ -481,12 +486,41 @@ public:
 
 			SgVarRefExp* containerVar = isSgVarRefExp( arrAccess->get_lhs_operand());
 			SgVarRefExp* indexVar = isSgVarRefExp(arrAccess->get_rhs_operand());
-
+			
 			if(indexVar != NULL && containerVar != NULL
 			   && indexVar->get_symbol()->get_name() == index){
 				if(container == ""){
 					container = containerVar->get_symbol()->get_name();
-					valid = true;
+					// find way to get length of statically allocated array
+					SgInitializedName* containerDef = containerVar->get_symbol()->get_declaration();
+
+					// Guard against pointers using [] (set name but set valid to false)
+					SgArrayType* conDefType = isSgArrayType(containerDef->get_type());
+					if(conDefType == NULL){valid = false;return;}
+
+					// arrays of form int a[] = {1,2,3}
+					if(SgAggregateInitializer* listInitializer =
+					   isSgAggregateInitializer(containerDef->get_initializer())){
+						// get size from length of list
+					    SgExprListExp* expListInit = isSgExprListExp(listInitializer->get_initializers());
+						if(expListInit == NULL){return;}
+
+						sizeOfArray = expListInit->get_expressions().size();
+						
+						valid = true;
+					}// Arrays of form int a[10] 
+					else{
+						// get size from type
+						// compiler will disallow wrong index types so SgValueExp is okay
+						if(SgValueExp* sizeValue = isSgValueExp(conDefType->get_index()) ){
+							sizeOfArray =  getIntegerConstantValue(sizeValue);
+							valid = true;
+						}// does not allow variables to define array length  
+						else{
+						    printf("invalid array declaration: %s\n",containerDef->unparseToString().c_str());
+							valid = false;
+						}
+					}	
 				}// container has been set so check if same as previous container
 				else if(container != containerVar->get_symbol()->get_name()) {
 					valid = false;
@@ -497,6 +531,9 @@ public:
 };
 
 // ====================================================================================================
+
+// ================================= MAIN TRAVERSAL ===================================================
+
 /*
  * Detects the 3 standard uses of for loops and transforms them to ranged for loops 
  *   1. statically allocated 
@@ -748,8 +785,8 @@ private:
 		printf("conName: %s\n",conName.getString().c_str());
 		
 		// Initialiser declaration: here is were the type would be extracted from the container is added but just use auto instead
-		SgVariableDeclaration* initializer_var
-			= buildVariableDeclaration(iterName, buildTemplateType("auto")); // need to add reference operator &
+		SgVariableDeclaration* initializer_var =
+			buildVariableDeclaration(iterName, buildTemplateType("auto")); // need to add reference operator &
 		
 		// Rangedeclaration
 		SgVariableDeclaration* range_var =
@@ -762,7 +799,8 @@ private:
 		
 		return rangeFor;
 	}
-// ========================== Array like containers ========================
+	
+	// ========================== Array like containers ========================
 
 	bool safeIndexForTransform(SgForStatement *forNode, const SgName& conName, const SgName& iterName){
 		printf("\tChecking Safe to Transform\n");
@@ -999,14 +1037,125 @@ private:
 	
 // ==================Statically allocated array for loop====================
 	
-	bool hasVaildBasicComparitor(SgStatement* testFor, int sizeOfContainer, SgName& index){
+	bool hasVaildBasicComparitor(SgForStatement* forLoopNode
+								 , SgStatement* testFor
+								 , SgName& container, SgName& index){
 
 		// don't know the target containers are its size, need both		
 		
 		// Will have index from the isIntializer  
-		
+
 		// Comparitor of form index < size, size > index, size != index, index != size
+		unsigned long long int sizeOfArray;
+		ValidArrayIndexTraversal arrayIndexTraversal(index);
+	    arrayIndexTraversal.traverse(forLoopNode->get_loop_body(),preorder); 
 		
+		if(arrayIndexTraversal.isValid()){
+			// setting container name for rest of for loop transformation
+			container = arrayIndexTraversal.getContainerName();
+			sizeOfArray  = arrayIndexTraversal.getContainerSize();
+			printf("Container Identified valid: %s, size: %d\n", container.getString().c_str(), sizeOfArray);
+		}else{
+			printf("No container identified or Multiple indexed: %s\n", container.getString().c_str());
+			return false;
+		}
+
+		SgVarRefExp* indexRef;
+		SgNode* sizeNode;
+			
+		SgExprStatement* exprCompare = isSgExprStatement(testFor);
+		if(exprCompare == NULL){return false;}
+		
+        // > case
+		if(SgLessThanOp* lessOp = isSgLessThanOp(exprCompare->get_expression())){
+			
+			printf("CLASS LHS: %s \n", lessOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n", lessOp->get_rhs_operand()->class_name().c_str());
+
+			// remove casting
+			SgNode* indexMaybeCast = lessOp->get_lhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(lessOp->get_lhs_operand())){
+				indexMaybeCast = castExp->get_operand();
+			}
+	 
+		    indexRef = isSgVarRefExp(indexMaybeCast);
+			
+			if(indexRef == NULL || indexRef->get_symbol()->get_name() != index){return false;}
+			// check index matches 
+
+		    sizeNode  = lessOp->get_rhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(lessOp->get_rhs_operand())){
+			    sizeNode = castExp->get_operand();
+			}
+			
+		}// < case
+		else if(SgGreaterThanOp* greaterOp = isSgGreaterThanOp((exprCompare->get_expression()))){
+
+			printf("CLASS LHS: %s \n", greaterOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n", greaterOp->get_rhs_operand()->class_name().c_str());
+			
+			SgNode* indexMaybeCast = greaterOp->get_rhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(greaterOp->get_rhs_operand())){
+				indexMaybeCast = castExp->get_operand();
+			}
+			
+		    indexRef = isSgVarRefExp(indexMaybeCast);
+			if(indexRef == NULL || indexRef->get_symbol()->get_name() != index){return false;}
+			// check index matches 
+
+		    sizeNode = greaterOp->get_lhs_operand();
+			if(SgCastExp* castExp = isSgCastExp(greaterOp->get_lhs_operand())){
+			    sizeNode = castExp->get_operand();
+			}
+			
+		}// != case (TRUE MAYBE)
+		else if(SgNotEqualOp* notEqualOp = isSgNotEqualOp(exprCompare->get_expression())){
+			// === remove casting === 
+			SgNode* leftNode = notEqualOp->get_lhs_operand();
+			SgNode* rightNode = notEqualOp->get_rhs_operand();
+			
+			if(SgCastExp* castExp = isSgCastExp(leftNode)){
+			    leftNode = castExp->get_operand();
+			}
+
+			if(SgCastExp* castExp = isSgCastExp(rightNode)){
+			    rightNode = castExp->get_operand();
+			}
+
+			printf("CLASS LHS: %s \n", notEqualOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n", notEqualOp->get_rhs_operand()->class_name().c_str());
+			
+			// check index in lhs
+			if(isSgVarRefExp(leftNode)){
+				indexRef = isSgVarRefExp(leftNode);
+			    sizeNode = rightNode;
+			}// check index in rhs
+			else{
+				indexRef = isSgVarRefExp(rightNode);
+			    sizeNode = leftNode;
+			}
+			
+			// indexRef matches index in initialiser
+			if(indexRef == NULL || indexRef->get_symbol()->get_name() != index){return false;}
+
+		}
+		
+		// compare container size to size in the comparitor
+		if(SgValueExp* sizeVal = isSgValueExp(sizeNode) ){
+
+			// need to fix to get only valid val types make it a function
+			if( !isSgDoubleVal(sizeVal) && !isSgFloatVal(sizeVal) && !isSgLongDoubleVal(sizeVal)){
+				unsigned long long int compSize = getIntegerConstantValue(sizeVal);
+				if(sizeOfArray == compSize){printf("VALID: Static array Comparitor\n");return true;}
+				printf("INVALID: Static array Comparitor\n");
+			}
+		}// the comparitor size is in an 
+		else if(SgVarRefExp* sizeVarRef = isSgVarRefExp(sizeNode)){
+			
+		}
+		
+		// fall through false for above ifs
+		return false;
 	}
 	
 	bool isBasicArrayLoop(SgForStatement* forLoopNode, SgName& container, SgName& index ){
@@ -1018,32 +1167,28 @@ private:
 		// Ensure only single vardeclaration in init statement
 		if(initFor->get_traversalSuccessorContainer().size() != 1){ return false;}
 		
-		printf("\tChecking Initializer: Array container\n"); // sets index
+		printf("\tChecking Initializer: Static Array Index\n"); // sets index
 		if(!hasValidIndexInitialiser(initFor, index)){return false;};
-
-		// traverse loop body to get the container used also its size to check in comparitor check
-
-		// return "" string if invalid or have internal variable 
-		
-		int sizeOfContainer = 0;
-		
-		
-		// DEBUG
 		printf("Name of Index: %s\n", index.getString().c_str());
+	   	
+		// traverse loop body to get the container used also its size to check in comparitor check
+		// return "" string if invalid or have internal variable
 		
-		printf("\tChecking comparitor: Array container\n");
+		printf("\tChecking comparitor: Static Array Index \n");
+		// sets container, find it first then sets it 
+		if(!hasVaildBasicComparitor(forLoopNode, testFor, container, index) ){return false;}
 		
-		// sets container name 
-		if(!hasVaildBasicComparitor(testFor, sizeOfContainer, index) ){return false;}
 		printf("Container Name: %s\n", container.getString().c_str());
-
-		printf("\tChecking Increment: Array container\n");
+		
+		
+		printf("\tChecking Increment: Static Array Index\n");
 		if(!hasVaildIncrement(incrFor, index)){return false;}
 		
 		// needs to be the same container being iterated (adding one may not work for all containers) 
 		
 		// should only be Variable declaration or assignment
-		// get initialiser name 		
+		// get initialiser name
+		return true;
 	}
 // =========================================================================
 
@@ -1103,9 +1248,20 @@ public:
 				popScopeStack(); // return scope to whatever it was remove
 				
 			}// statically allocated
-			else if(isBasicArrayLoop(loopNode, containerName, iteratorName) ){
+			else if(isBasicArrayLoop(loopNode, containerName, iteratorName) && safeIndexForTransform(loopNode, containerName, iteratorName)){
 				
+				SgStatement* loopBody = loopNode->get_loop_body();
+				
+				SgRangeBasedForStatement* rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
 
+				IndexUseTransform indexUseTransform(containerName, iteratorName);
+				indexUseTransform.traverse(loopBody, preorder);
+				
+				rangeFor->set_loop_body(loopBody);
+
+				replaceStatement(loopNode, rangeFor); // actually inserting happens here
+				popScopeStack(); // return scope to whatever it was remove
+				
 			}
 			
 			printf("======================\n");
