@@ -479,7 +479,7 @@ public:
     SgName getContainerName(){
 		return container;
 	}
-	
+
 	void visit(SgNode* node){
 
 		if(SgPntrArrRefExp* arrAccess = isSgPntrArrRefExp(node)){
@@ -489,6 +489,7 @@ public:
 			
 			if(indexVar != NULL && containerVar != NULL
 			   && indexVar->get_symbol()->get_name() == index){
+				
 				if(container == ""){
 					container = containerVar->get_symbol()->get_name();
 					// find way to get length of statically allocated array
@@ -509,7 +510,7 @@ public:
 						
 						valid = true;
 					}// Arrays of form int a[10] 
-					else{
+					else{ 
 						// get size from type
 						// compiler will disallow wrong index types so SgValueExp is okay
 						if(SgValueExp* sizeValue = isSgValueExp(conDefType->get_index()) ){
@@ -786,7 +787,7 @@ private:
 		
 		// Initialiser declaration: here is were the type would be extracted from the container is added but just use auto instead
 		SgVariableDeclaration* initializer_var =
-			buildVariableDeclaration(iterName, buildTemplateType("auto")); // need to add reference operator &
+			buildVariableDeclaration(iterName, buildReferenceType(buildTemplateType("auto"))); // need to add reference operator &
 		
 		// Rangedeclaration
 		SgVariableDeclaration* range_var =
@@ -1060,6 +1061,7 @@ private:
 			return false;
 		}
 
+		// cases below set both of these variables for final comparison
 		SgVarRefExp* indexRef;
 		SgNode* sizeNode;
 			
@@ -1140,18 +1142,46 @@ private:
 
 		}
 		
-		// compare container size to size in the comparitor
+		// compare container size to number size in the comparitor e.g (i < 10) or (1 < 10l)
 		if(SgValueExp* sizeVal = isSgValueExp(sizeNode) ){
 
 			// need to fix to get only valid val types make it a function
 			if( !isSgDoubleVal(sizeVal) && !isSgFloatVal(sizeVal) && !isSgLongDoubleVal(sizeVal)){
-				unsigned long long int compSize = getIntegerConstantValue(sizeVal);
+			    auto compSize = getIntegerConstantValue(sizeVal);
 				if(sizeOfArray == compSize){printf("VALID: Static array Comparitor\n");return true;}
 				printf("INVALID: Static array Comparitor\n");
 			}
-		}// the comparitor size is in an 
+		}// the comparitor size is in a variable (probably const int or similar)
+		//TODO:
 		else if(SgVarRefExp* sizeVarRef = isSgVarRefExp(sizeNode)){
+			// get def of varRef
+			// check def is const and right is number
+			// get number and compare
+			SgInitializedName* sizeVarDef = sizeVarRef->get_symbol()->get_declaration();
+			printf("Name of size var: %s\n"
+				   , sizeVarRef->get_symbol()->get_name().getString().c_str());
 			
+			SgType* varType = sizeVarDef->get_type();
+			if(!isConstType(varType)){return false;}
+
+			// right hand side is SgValueExp
+			SgAssignInitializer* assignSizeDef = isSgAssignInitializer(sizeVarDef->get_initializer());
+			if(assignSizeDef == NULL){return false;}
+
+			SgValueExp* sizeDefVal = isSgValueExp(assignSizeDef->get_operand());
+			if(sizeDefVal == NULL){return false;}
+			
+			// already checked if type integer
+			
+			// need to fix to get only valid val types make it a function
+			if( !isSgDoubleVal(sizeDefVal) && !isSgFloatVal(sizeDefVal) && !isSgLongDoubleVal(sizeDefVal)){
+				auto compSize = getIntegerConstantValue(sizeDefVal);
+				printf("Comparitor Size: %d\n", compSize);
+				if(sizeOfArray == compSize){printf("VALID: Static array Comparitor\n");return true;}
+				printf("INVALID: Static array Comparitor\n");
+			}else{
+				printf("INVALID: comparitor type %s\n", sizeDefVal->class_name().c_str());
+			}
 		}
 		
 		// fall through false for above ifs
@@ -1179,7 +1209,6 @@ private:
 		if(!hasVaildBasicComparitor(forLoopNode, testFor, container, index) ){return false;}
 		
 		printf("Container Name: %s\n", container.getString().c_str());
-		
 		
 		printf("\tChecking Increment: Static Array Index\n");
 		if(!hasVaildIncrement(incrFor, index)){return false;}
