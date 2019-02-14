@@ -975,7 +975,7 @@ private:
 	bool hasValidIndexInitialiser(SgForInitStatement* initFor, SgName& index){
 		// get first varDec
 		SgVariableDeclaration* varDecInit = isSgVariableDeclaration(initFor->get_init_stmt().at(0));
-		if(varDecInit == NULL and varDecInit->get_variables().size() >= 1){return false;}
+		if(varDecInit == NULL or varDecInit->get_variables().size() != 1){return false;}
 
 		SgInitializedName*  initName = varDecInit->get_variables().at(0);
 		index = initName->get_name();// set index name
@@ -990,6 +990,7 @@ private:
 		}
 
 		SgValueExp* val = isSgValueExp(valNode);
+		if(val == NULL){return false;}
 		
 		if( !isSgDoubleVal(val) && !isSgFloatVal(val) && !isSgLongDoubleVal(val) ){
 			printf("checking val\n");
@@ -1008,7 +1009,8 @@ private:
 		SgForInitStatement* initFor = forLoopNode->get_for_init_stmt();
 		SgStatement* testFor = forLoopNode->get_test();
 		SgExpression* incrFor = forLoopNode->get_increment();
-		
+		if(incrFor == NULL or testFor == NULL or incrFor == NULL){return false;}
+	   
 		// Ensure only single vardeclaration in init statement
 		if(initFor->get_traversalSuccessorContainer().size() != 1){ return false;}
 		
@@ -1163,12 +1165,17 @@ private:
 			
 			SgType* varType = sizeVarDef->get_type();
 			if(!isConstType(varType)){return false;}
-
+			
 			// right hand side is SgValueExp
 			SgAssignInitializer* assignSizeDef = isSgAssignInitializer(sizeVarDef->get_initializer());
 			if(assignSizeDef == NULL){return false;}
 
-			SgValueExp* sizeDefVal = isSgValueExp(assignSizeDef->get_operand());
+			SgNode* assignExp = assignSizeDef->get_operand();
+			if(SgCastExp* castExp = isSgCastExp(assignExp)){
+				assignExp = castExp->get_operand();
+			}
+			
+			SgValueExp* sizeDefVal = isSgValueExp(assignExp);
 			if(sizeDefVal == NULL){return false;}
 			
 			// already checked if type integer
@@ -1232,7 +1239,8 @@ public:
 		
 		if(loopNode != NULL && !isCompilerGenerated(loopNode)){
 			printf("=== FOR loop Start ===\n");
-
+			printf("FOUND ON LINE: %d\n", loopNode->get_file_info()->get_line());
+			
 			// Iterators for conatiners
 			if( isIteratorLoop(loopNode, containerName, iteratorName)
 				&& safeIteratorForTransform(loopNode, containerName, iteratorName)){
