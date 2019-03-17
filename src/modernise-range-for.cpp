@@ -1,4 +1,3 @@
-
 #include "rose.h"
 #include <vector>
 #include <string>
@@ -29,7 +28,8 @@ private:
 			parentParent->replace_expression(currentExp, newExp);
 			printf("Finished repalcement\n");
 					
-		}// expression Statement may not be the only possible statement that is parent of pointerDeref
+		}// expression Statement may not be the only possible statement
+		//that is parent of pointerDeref
 		else if(SgExprStatement* exptStmt = isSgExprStatement(currentExp->get_parent())){
 		    printf("Not expression\n");
 			exptStmt->set_expression(newExp);
@@ -46,7 +46,8 @@ private:
 	void visit(SgNode* node){ // we know that the only uses of variable are deref and arrowexp
 
 		// Target VarRefs of the iterator 
-		if(isSgVarRefExp(node) && ((SgVarRefExp*)node)->get_symbol()->get_name() == iterator){
+		if(isSgVarRefExp(node) &&
+		   ((SgVarRefExp*)node)->get_symbol()->get_name() == iterator){
 	   
 			SgVarRefExp* iterRef = (SgVarRefExp*) node;
 			// parent of instance of iterator variable 
@@ -54,11 +55,13 @@ private:
 
 			// ==== POINTER DEFERENCE ====
 			if(SgPointerDerefExp* ptrDeRef = isSgPointerDerefExp(parentNode)){
-				// remove the pointerDeref node and replace with just the varRefExp node (don't delete the node)
+				// remove the pointerDeref node and replace with just the varRefExp node
+				//(don't delete the node)
 				printf("Replacing expression\n");
 
-				// if the parent of the dereference is not an expression does it have to be a ExprStatement ?(No)
-				// can be in an if statementhtop
+				/* if the parent of the dereference is not an expression
+				does it have to be a ExprStatement ?(NO) can be in an 
+				if statementhtop */
 				
 				if(SgExpression* parentParent = isSgExpression(ptrDeRef->get_parent())){;
 					//if(parentParent == NULL){ printf("Not expression\n");return;}
@@ -68,13 +71,15 @@ private:
    
 					printf("Finished repalcement\n");
 					
-				}// expression Statement may not be the only possible statement that is parent of pointerDeref
+				}// expression Statement may not be the only possible statement that is
+				// parent of pointerDeref
 				else if(SgExprStatement* exptStmt = isSgExprStatement(ptrDeRef->get_parent())){
 					exptStmt->set_expression(iterRef);
 				}
 
 			} // ==== ARROW DEREFERENCE ==== 
-			else if(SgArrowExp* arrowExp = isSgArrowExp(parentNode)){ // shows up in odd places like overloaded derefence
+			else if(SgArrowExp* arrowExp = isSgArrowExp(parentNode)){
+				// shows up in odd places like overloaded derefence
 				// build dotExp type
 				// replace arrow with dotExp
 				
@@ -109,7 +114,7 @@ private:
 					while( !isSgFunctionCallExp(nodeCheck) ){
 						nodeCheck = nodeCheck->get_parent();
 					}
-
+					
 					SgFunctionCallExp* funcExp =  isSgFunctionCallExp(nodeCheck);
 					if(funcExp == NULL){ printf("failed to find Function call\n");return;}
 
@@ -146,10 +151,12 @@ class IteratorUseTraversal : public AstSimpleProcessing{
     SgName container;
 	SgName iterator;
 	bool validToTransform = true;
+	
 private:
 	
 	/*
-	 * returns name of the function called if object getting its method called matches containerName 
+	 * returns name of the function called if object getting its method called matches 
+	 * containerName 
 	 */
     SgName* getMethodCalled(SgFunctionCallExp* func, const SgName& containerName){
 
@@ -199,7 +206,8 @@ public:
 				
 		SgVarRefExp* varRef = isSgVarRefExp(node);
 		
-		//printf("Found use of container or iterator: %s\n" , varRef->get_symbol()->get_name().getString().c_str());
+		//printf("Found use of container or iterator: %s\n"
+		//, varRef->get_symbol()->get_name().getString().c_str());
 
 		if(varRef != NULL && varRef->get_symbol()->get_name() == iterator){
 			// check that only uses are dereference normal or overloaded
@@ -229,7 +237,8 @@ public:
 					
 			}else{
 				// if non of the above then
-				printf("Invalid Iterator use: line %d, parent class: %s\n", parentNode->get_file_info()->get_line(),
+				printf("Invalid Iterator use: line %d, parent class: %s\n",
+					   parentNode->get_file_info()->get_line(),
 					   parentNode->class_name().c_str());
 				validToTransform = false;
 			}
@@ -243,17 +252,18 @@ public:
 			// any function call on container is dangerous 
 			if(SgDotExp* dotExp = isSgDotExp(parentNode)){
 				// right hand side has to be a member 
-				SgMemberFunctionRefExp* rhsOpCall = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
+				SgMemberFunctionRefExp*
+					rhsOpCall = isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
 				if(rhsOpCall != NULL){validToTransform = false;}
 				printf("Method used on container: line %d\n", rhsOpCall->get_file_info()->get_line());
 			}
 		}
 	}
 };
-// ===================================================================================================
+// ================================================================================================
 
 
-// ============================== INDEX Size ===================================================== 
+// ============================== INDEX Size ======================================================
 /*
  * Aim: To transform the the uses of the container con.at(indx) 
  * or con[indx] non overloaded con[idx]
@@ -286,7 +296,7 @@ public:
 			exptStmt->set_expression(newExp);
 			printf("Finished repalcement\n");
 		}else{
-			printf("Conditions not meet no transformation intacted\n");
+			printf("Conditions not met no transformation inacted\n");
 		}
 	}
 	
@@ -370,13 +380,12 @@ public:
 	// will be removing the index with the element of the array  
 	// should be able to be used by both array transforms
 	void visit(SgNode* node){
-
-		// CHECK 2: only calls to the container are at() and [] 
-		
 		// CHECK 1: container.call(index);
 		//     check index is inside an appropriate operator [] at or operator[] 
 		//     then check that the function call taking place is an 
 		
+		// CHECK 2: only calls to the container are at() and [] 
+ 
 		SgVarRefExp* varRef = isSgVarRefExp(node);
 		
 	    if(varRef != NULL && varRef->get_symbol()->get_name() == index){
@@ -412,7 +421,8 @@ public:
 			}
 			else{
 				//DEBUG
-				printf("INVALID: VarRef index parents node class: %s\n",parentOfVar->class_name().c_str());
+				printf("INVALID: VarRef index parents node class: %s\n",
+					   parentOfVar->class_name().c_str());
 				validTransform = false;
 			}
 			
@@ -426,7 +436,7 @@ public:
 		
 				SgMemberFunctionRefExp* memberF
 					= isSgMemberFunctionRefExp(dotExp->get_rhs_operand());
-				// if not container fuction call to [] or at error
+				// if not container fuction call to [] or at() error
 				if(memberF == NULL
 				   || !( memberF->get_symbol()->get_name() == "at"
 						 || memberF->get_symbol()->get_name() == "operator[]")){
@@ -514,7 +524,7 @@ public:
 						// get size from type
 						// compiler will disallow wrong index types so SgValueExp is okay
 						if(SgValueExp* sizeValue = isSgValueExp(conDefType->get_index()) ){
-							sizeOfArray =  getIntegerConstantValue(sizeValue);
+							sizeOfArray =  getIntegerConstantValue(sizeValue); // possible xceptions
 							valid = true;
 						}// does not allow variables to define array length  
 						else{
@@ -560,8 +570,9 @@ private:
 	   
 		SgAssignInitializer* assign = isSgAssignInitializer(initialisedName->get_initializer());
 		if(assign == NULL ){ return NULL;}
-		
-		SgFunctionCallExp* func = isSgFunctionCallExp(assign->get_operand()); // ensures we dont get any nesting
+
+		// ensures we dont get any nesting
+		SgFunctionCallExp* func = isSgFunctionCallExp(assign->get_operand()); 
 		if(func == NULL){ return NULL;}
 		
 		SgDotExp* dotExp =  isSgDotExp(func->get_function());
@@ -629,9 +640,13 @@ private:
 			// if(neq == NULL){return false;}
 		
 			// DEBUG
-			//printf("class of NEQ FUNC: %s\n", funcOverLoad->get_args()->get_expressions().at(1)->class_name().c_str());	// *somthing* != function
-			//printf("class of NEQ varRef: %s\n",funcOverLoad->get_args()->get_expressions().at(0)->class_name().c_str()); // a != *something*
-		
+			// *somthing* != function
+			/*printf("class of NEQ FUNC: %s\n"
+			  ,funcOverLoad->get_args()->get_expressions().at(1)->class_name().c_str()); 
+			// a != *something*
+			printf("class of NEQ varRef: %s\n"
+			  ,funcOverLoad->get_args()->get_expressions().at(0)->class_name().c_str()); 
+			*/
 			if(var != NULL && func != NULL
 			   &&  var->get_symbol()->get_name() == iterName
 			   && isMethodCall(func, containerName, methodNameEnd)){
@@ -640,8 +655,10 @@ private:
 			}
 		
 			// check for the args to =! being the oppsite way round
-			SgVarRefExp* varR = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(1) );
-			SgFunctionCallExp* funcL = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(0));
+			SgVarRefExp*
+			varR = isSgVarRefExp(funcOverLoad->get_args()->get_expressions().at(1) );
+			SgFunctionCallExp*
+			funcL = isSgFunctionCallExp(funcOverLoad->get_args()->get_expressions().at(0));
 													  
 			if( varR != NULL && funcL != NULL
 				&& varR->get_symbol()->get_name() == iterName
@@ -679,7 +696,8 @@ private:
 	// iterators have overloaded operators functions !=, ++. ==, etc
 	
 	/*
-	 * Function checks that an overloaded ++ operator is utilised on the same variable passed as argument 
+	 * Function checks that an overloaded ++ operator is utilised on the same variable 
+	 * passed as argument 
 	 * iterators using prefix ++ and posfix ++ are both handled
 	 */
 	bool hasVaildIncrement( SgExpression* incrFor, const SgName& iteratorName){
@@ -707,10 +725,11 @@ private:
 	
 	/*
 	 * If all 3 part of for loop match the intialisation condition and return true 
-	 * for( vector<something>::iterator iter = vec.begin; iter != vec.end(); vec++) has to iterate throught the entire container 
+	 * for( vector<something>::iterator iter = vec.begin; iter != vec.end(); vec++) 
+	 * has to iterate throught the entire container 
 	 * for ( type elem : container)
 	 */
-	bool isIteratorLoop(SgForStatement *forNode, SgName& containerName, SgName& iteratorName){		
+	bool isIteratorLoop(SgForStatement *forNode, SgName& containerName, SgName& iteratorName){
 		SgForInitStatement* initFor = forNode->get_for_init_stmt();
 		SgStatement* testFor = forNode->get_test();
 		SgExpression* incrFor = forNode->get_increment();
@@ -738,7 +757,8 @@ private:
 		printf("\tChecking Increment: Iterator Container\n");
 		if(!hasVaildIncrement( incrFor, iteratorName)){return false;}
 		
-		// needs to be the same container being iterated (adding one may not work for all containers) 
+		// needs to be the same container being iterated
+		// (adding one may not work for all containers) 
 		return true;
 	}
 
@@ -759,45 +779,33 @@ private:
 
 	inline bool isCompilerGenerated(SgNode *node){return node->get_file_info()->isCompilerGenerated();}
 
-	SgRangeBasedForStatement* constructRangedBasedForLoop(SgName& conName, SgName& iterName, SgForStatement *loopNode){
-		// normal array will be of array type, every STL class vector, map, etc will probably be of class type (don't know what TypedefType is or used for like typedef struct thing)		
-		// get iterator type (assumption being made that the iterator type will have some way of gettin the underlying type)
-		// can just use auto instead to get type,
-		
-		// SgInitializedName* iteratorNode =  hasValidInitializer(loopNode->get_for_init_stmt() , conName, iterName);
-		// SgType* iteratorType = iteratorNode->get_type();
-		
-		//SgVariableDeclaration* varDecl = isSgVariableDeclaration(iteratorNode->get_declaration());
-		
-		// if classType or TypeDefType try and extract type else default to auto
-		// ======================= ======================= =======================
-		// get definition of class which is should be a Templated class
-		// if(isSgClassType(iteratorType->dereference()) && isSgTemplateInstantiationDecl(((SgClassType*) iteratorType->dereference())->get_declaration())){
-		//     printf("Is Templated Class\n");}else{printf("Is Not Templated Class\n");
-		// }
-		// DEBUG
-		// if(varDecl != NULL){printf("Variable Declaration specialisation: %s\n", (varDecl->isSpecialization() ?  "true" : "false"));}
-		// ======================= ======================= =======================   
-
+	SgRangeBasedForStatement* constructRangedBasedForLoop(SgName& conName, SgName& iterName,
+														  SgForStatement *loopNode)
+	{
 		// BUILDING REPLACEMENT FOR LOOP:
 		pushScopeStack(loopNode); // very important to set scope
 		
 		// DEBUG
 		printf("conName: %s\n",conName.getString().c_str());
 		
-		// Initialiser declaration: here is were the type would be extracted from the container is added but just use auto instead
+		/* Initialiser declaration: here is were the type would be extracted
+		   from the container is added but just use auto instead*/
 		SgVariableDeclaration* initializer_var =
-			buildVariableDeclaration(iterName, buildReferenceType(buildTemplateType("auto"))); // need to add reference operator &
+			buildVariableDeclaration(iterName, buildReferenceType(buildTemplateType("auto"))); 
 		
-		// Rangedeclaration
+		// Range declaration
 		SgVariableDeclaration* range_var =
-			buildVariableDeclaration("_range", buildTemplateType("auto"), buildAssignInitializer(buildVarRefExp(conName)));
+			buildVariableDeclaration("_range",
+									 buildTemplateType("auto"),
+									 buildAssignInitializer(buildVarRefExp(conName)));
 		
 		/* do not require many of the components of the rangeBasedForStatement to be actually
 		 * added just variable storing elements and the range (container being used)*/
 		SgRangeBasedForStatement* rangeFor =
-			buildRangeBasedForStatement_nfi(initializer_var, range_var, NULL, NULL, NULL, NULL, buildBasicBlock());
-		
+			buildRangeBasedForStatement_nfi(initializer_var,
+										    range_var,
+										    NULL, NULL, NULL, NULL,
+										    buildBasicBlock());	
 		return rangeFor;
 	}
 	
@@ -1021,7 +1029,7 @@ private:
 		printf("Name of Index: %s\n", index.getString().c_str());
 		
 		printf("\tChecking comparitor: Array container\n");
-		// sets container name 
+		// sets containenr name 
 		if(!hasVaildSizeComparitor(testFor, container, index) ){return false;}
 		printf("Container Name: %s\n", container.getString().c_str());
 
@@ -1038,8 +1046,8 @@ private:
 	
 // =========================================================================
 	
-// ==================Statically allocated array for loop====================
-	
+// ================== Statically allocated array for loop ====================
+
 	bool hasVaildBasicComparitor(SgForStatement* forLoopNode
 								 , SgStatement* testFor
 								 , SgName& container, SgName& index){
@@ -1057,9 +1065,12 @@ private:
 			// setting container name for rest of for loop transformation
 			container = arrayIndexTraversal.getContainerName();
 			sizeOfArray  = arrayIndexTraversal.getContainerSize();
-			printf("Container Identified valid: %s, size: %d\n", container.getString().c_str(), sizeOfArray);
+			printf("Container Identified valid: %s, size: %llu\n",
+				   container.getString().c_str(),
+				   sizeOfArray);
 		}else{
-			printf("No container identified or Multiple indexed: %s\n", container.getString().c_str());
+			printf("No container identified or Multiple indexed: %s\n",
+				   container.getString().c_str());
 			return false;
 		}
 
@@ -1073,8 +1084,10 @@ private:
         // > case
 		if(SgLessThanOp* lessOp = isSgLessThanOp(exprCompare->get_expression())){
 			
-			printf("CLASS LHS: %s \n", lessOp->get_lhs_operand()->class_name().c_str());
-			printf("CLASS RHS: %s \n", lessOp->get_rhs_operand()->class_name().c_str());
+			printf("CLASS LHS: %s \n",
+				   lessOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n",
+				   lessOp->get_rhs_operand()->class_name().c_str());
 
 			// remove casting
 			SgNode* indexMaybeCast = lessOp->get_lhs_operand();
@@ -1126,8 +1139,10 @@ private:
 			    rightNode = castExp->get_operand();
 			}
 
-			printf("CLASS LHS: %s \n", notEqualOp->get_lhs_operand()->class_name().c_str());
-			printf("CLASS RHS: %s \n", notEqualOp->get_rhs_operand()->class_name().c_str());
+			printf("CLASS LHS: %s \n",
+				   notEqualOp->get_lhs_operand()->class_name().c_str());
+			printf("CLASS RHS: %s \n",
+				   notEqualOp->get_rhs_operand()->class_name().c_str());
 			
 			// check index in lhs
 			if(isSgVarRefExp(leftNode)){
@@ -1154,7 +1169,6 @@ private:
 				printf("INVALID: Static array Comparitor\n");
 			}
 		}// the comparitor size is in a variable (probably const int or similar)
-		//TODO:
 		else if(SgVarRefExp* sizeVarRef = isSgVarRefExp(sizeNode)){
 			// get def of varRef
 			// check def is const and right is number
@@ -1228,18 +1242,24 @@ private:
 	}
 // =========================================================================
 
+	unsigned long long for_count = 0;
+	unsigned long long transformed_count = 0;
 public:
+	
+	unsigned long long getNumberOfFor(){return for_count;}
 
+	unsigned long long getNumberOfTransformed(){return transformed_count;}
+	
 	void visit(SgNode *node){
 		
-		SgForStatement *loopNode  = isSgForStatement(node); // ignores ranged for loops
-		
+		SgForStatement *loopNode  = isSgForStatement(node); // ignores ranged for loops		
 		SgName containerName;
 		SgName iteratorName;
 		
 		if(loopNode != NULL && !isCompilerGenerated(loopNode)){
 			printf("=== FOR loop Start ===\n");
 			printf("FOUND ON LINE: %d\n", loopNode->get_file_info()->get_line());
+			for_count++;
 			
 			// Iterators for conatiners
 			if( isIteratorLoop(loopNode, containerName, iteratorName)
@@ -1255,7 +1275,8 @@ public:
 				SgStatement* loopBody = loopNode->get_loop_body();
 				
 				// build new ranged for loop
-				SgRangeBasedForStatement* rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
+				SgRangeBasedForStatement*
+					rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
 			    
 				// transform loop body to work with new ranged header				
 				IteratorUseTransform iteratorTransform(iteratorName);
@@ -1267,14 +1288,15 @@ public:
 				// replace old "for" with new "rangeFor"
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove
-				
+				transformed_count++;
 			}// array like containers using operators [] and at()			
 			else if(isArraySizeLoop(loopNode, containerName, iteratorName)
 					&& safeIndexForTransform(loopNode, containerName, iteratorName) ){
 
 				SgStatement* loopBody = loopNode->get_loop_body();
 				
-				SgRangeBasedForStatement* rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
+				SgRangeBasedForStatement*
+					rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
 
 				IndexUseTransform indexUseTransform(containerName, iteratorName);
 				indexUseTransform.traverse(loopBody, preorder);
@@ -1284,12 +1306,15 @@ public:
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove
 				
+				transformed_count++;
 			}// statically allocated
-			else if(isBasicArrayLoop(loopNode, containerName, iteratorName) && safeIndexForTransform(loopNode, containerName, iteratorName)){
+			else if(isBasicArrayLoop(loopNode, containerName, iteratorName)
+					&& safeIndexForTransform(loopNode, containerName, iteratorName)){
 				
-				SgStatement* loopBody = loopNode->get_loop_body();
+				SgStatement *loopBody = loopNode->get_loop_body();
 				
-				SgRangeBasedForStatement* rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
+				SgRangeBasedForStatement*
+					rangeFor = constructRangedBasedForLoop(containerName, iteratorName, loopNode);
 
 				IndexUseTransform indexUseTransform(containerName, iteratorName);
 				indexUseTransform.traverse(loopBody, preorder);
@@ -1299,6 +1324,7 @@ public:
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove
 				
+				transformed_count++;
 			}
 			
 			printf("======================\n");
@@ -1342,6 +1368,12 @@ int main(int argc, char* argv[]){
     //SimpleVarDecTraversal traversal;
 	ForLoopTraversal traversal;
 	traversal.traverseInputFiles(project, preorder);
+
+	printf("Total Number of For loops found: %lu \n",
+		   traversal.getNumberOfFor());
+	printf("Total Number of For loops Transformed: %lu \n",
+		   traversal.getNumberOfTransformed());
+	
 	//AstTests::runAllTests(project) ;
     return backend(project);
 }

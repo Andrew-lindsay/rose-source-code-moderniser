@@ -8,6 +8,10 @@ using namespace SageInterface;
 
 class SimpleVarDecTraversal : public AstSimpleProcessing{
 
+	unsigned long long countTrans = 0;
+	unsigned long long numOfVarDec = 0;
+	bool enableMinTypeLength  = true;
+
     // --------------------------- helper functions ----------------------------------------------
     // all the side effects
     void setbaseType(SgType* type,SgType* newType){
@@ -35,6 +39,15 @@ class SimpleVarDecTraversal : public AstSimpleProcessing{
     // -------------------------------------------------------------------------------------------
  
 public:
+
+	unsigned long long getCount(){
+		return countTrans;
+	}
+
+	unsigned long long getCountVarDec(){
+		return numOfVarDec;
+	}
+	
     /* can only apply auto if there is rhs to vardec and that is an AssignInitializer and need to
        preserve type info such as point (what about many initilaisations on one line) */
     void visit(SgNode* node){
@@ -69,7 +82,10 @@ public:
 				   ,assignNode->get_typeptr()->class_name().c_str()
 				   ,rhsType->class_name().c_str()
 				   ,assignNode->get_typeptr()->findBaseType()->unparseToString().c_str());
-	    
+
+			// count number that could be transformed
+			numOfVarDec++;
+			
 			SgName name_new = "auto";
 		 	SgTreeCopy copyDeep;
 			SgType* type = assignNode->get_typeptr();
@@ -78,26 +94,33 @@ public:
 			SgCastExp* castExpr = isSgCastExp(initializer->get_operand());
 
 			// need to handle function pointner/ dont try and auto function pointers 
-
+			
 			// check to see if a cast has been created by the compiler meaning that the RHS is an implict cast 
 			if( castExpr != NULL  &&  castExpr->isCompilerGenerated()){
 				printf("Implict cast: %s\n\n", assignNode->unparseToString().c_str());
 				return;
 			}
 			
-			
-			
 			if(assignNode->get_using_auto_keyword()){
 				printf("Using Auto don't alter\n\n");
 				return;
 			}
 
+			// check length of type
+			printf("Type of Variable: %s\n", type->unparseToString().c_str());
+
+			// int, bool, char, string, double, float int* 
+			if( enableMinTypeLength && type->unparseToString().size() <= 5 ){
+				printf("NOT TRANFORMED: Type signature too short\n\n");
+				return; // don't transform
+			}
+			
 			// TESTING IF CHECK MAKES ANY CHANGE
 			// if(assignNode->get_file_info()->get_file_id() != 0){
 			//	 return;
 			// }
 	    
-			if(type->containsInternalTypes() && isSgTypedefType(type) == NULL){ // 
+			if(type->containsInternalTypes() && isSgTypedefType(type) == NULL){ 
 				// only need to copy when we know we have nested types 
 				SgType* typeCopy = (SgType*) assignNode->get_typeptr()->copy(copyDeep);
 				printf("RECURSIVE TYPES\n\n");		
@@ -109,10 +132,12 @@ public:
 				//set Basetype
 				setbaseType(typeCopy, new SgTemplateType(name_new));
 				assignNode->set_typeptr( typeCopy->stripType(SgType::STRIP_POINTER_TYPE) );
+				countTrans++;
 			}
 			else{
 				printf("BASE TYPES\n\n");
 				assignNode->set_typeptr(new SgTemplateType(name_new));
+				countTrans++;
 			}
 		}
     }
@@ -154,6 +179,8 @@ int main(int argc, char *argv[]){
     // traverse the ast tree
     SimpleVarDecTraversal traversal;
     traversal.traverseInputFiles(project, preorder);
-    
+	
+	printf("Total Number of VarDec Transformed: %llu\n",traversal.getCount());
+	
     return backend(project);
 }
