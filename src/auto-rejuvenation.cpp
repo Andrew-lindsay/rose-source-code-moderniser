@@ -114,12 +114,7 @@ public:
 				printf("NOT TRANFORMED: Type signature too short\n\n");
 				return; // don't transform
 			}
-			
-			// TESTING IF CHECK MAKES ANY CHANGE
-			// if(assignNode->get_file_info()->get_file_id() != 0){
-			//	 return;
-			// }
-	    
+				    
 			if(type->containsInternalTypes() && isSgTypedefType(type) == NULL){ 
 				// only need to copy when we know we have nested types 
 				SgType* typeCopy = (SgType*) assignNode->get_typeptr()->copy(copyDeep);

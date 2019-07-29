@@ -233,8 +233,7 @@ public:
 					printf("Invalid Iterator use: line %d, Dot rhs class: %s\n"
 						   ,dotExp->get_rhs_operand()->get_file_info()->get_line()
 						   ,dotExp->get_rhs_operand()->class_name().c_str());
-				}
-					
+				}					
 			}else{
 				// if non of the above then
 				printf("Invalid Iterator use: line %d, parent class: %s\n",
@@ -1288,6 +1287,7 @@ public:
 				// replace old "for" with new "rangeFor"
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove
+				printf("Loop Transformed\n");
 				transformed_count++;
 			}// array like containers using operators [] and at()			
 			else if(isArraySizeLoop(loopNode, containerName, iteratorName)
@@ -1306,10 +1306,12 @@ public:
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove
 				
+				printf("Loop Transformed\n");
 				transformed_count++;
 			}// statically allocated
 			else if(isBasicArrayLoop(loopNode, containerName, iteratorName)
 					&& safeIndexForTransform(loopNode, containerName, iteratorName)){
+
 				
 				SgStatement *loopBody = loopNode->get_loop_body();
 				
@@ -1323,7 +1325,8 @@ public:
 
 				replaceStatement(loopNode, rangeFor); // actually inserting happens here
 				popScopeStack(); // return scope to whatever it was remove
-				
+
+				printf("Loop Transformed\n");
 				transformed_count++;
 			}
 			

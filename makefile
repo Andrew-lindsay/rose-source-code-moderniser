@@ -15,13 +15,20 @@ BUILD_DIR=build
 TESTS_DIR=tests
 
 # Standard C++ compiler stuff (see rose-config --help)
+comma   := ,
+CXX      = $(shell $(ROSE_INSTALL)/bin/rose-config cxx)
+CPPFLAGS = $(shell $(ROSE_INSTALL)/bin/rose-config cppflags) -I.
+CXXFLAGS = $(shell $(ROSE_INSTALL)/bin/rose-config cxxflags)
+LIBDIRS  = $(shell $(ROSE_INSTALL)/bin/rose-config libdirs)
+LDFLAGS  = $(shell $(ROSE_INSTALL)/bin/rose-config ldflags) -L. \
+           $(addprefix -Wl$(comma)-rpath -Wl$(comma), $(subst :, , $(LIBDIRS)))
 
 ## Your translator
-TRANSLATOR=modernise-auto
-TRANSLATOR_SOURCE=$(SRC_DIR)/$(TRANSLATOR).cpp
+AUTO_TRANSLATOR=auto-rejuvenation
+AUTO_TRANSLATOR_SOURCE=$(SRC_DIR)/$(AUTO_TRANSLATOR).cpp
 
-FOR-TRANSLATOR=modernise-range-for
-FOR-TRANSLATOR_SOURCE=$(SRC_DIR)/$(FOR-TRANSLATOR).cpp
+FOR_TRANSLATOR=for-loop-rejuvenation
+FOR_TRANSLATOR_SOURCE=$(SRC_DIR)/$(FOR_TRANSLATOR).cpp
 
 ## Input testcode for your translator
 TESTCODE=
@@ -30,19 +37,19 @@ TESTCODE=
 # Makefile Targets
 #-------------------------------------------------------------
 
-all: $(BUILD_DIR)/$(TRANSLATOR) $(BUILD_DIR)/$(FOR-TRANSLATOR)
+all: $(BUILD_DIR)/$(AUTO_TRANSLATOR) $(BUILD_DIR)/$(FOR_TRANSLATOR)
 
 # compile the translator and generate an executable
 # -g is recommended to be used by default to enable debugging your code
-$(BUILD_DIR)/$(TRANSLATOR): $(TRANSLATOR_SOURCE)
-	$(CXX)  -std=c++11 -g $(TRANSLATOR_SOURCE) -I/home/sheep/opt/rose_inst/include/rose -I/home/sheep/opt/dlib/18.18  -pthread -I/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/include -I. -L/home/sheep/opt/rose_inst/lib -lrose -pthread  -L/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -lboost_date_time -lboost_thread -lboost_filesystem -lboost_program_options -lboost_regex -lboost_system -lboost_serialization -lboost_wave -lboost_iostreams -lboost_chrono -L/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -ljvm  -ldl -lm -L. -Wl,-rpath -Wl,/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -Wl,-rpath -Wl,/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -o $@
+$(BUILD_DIR)/$(AUTO_TRANSLATOR): $(AUTO_TRANSLATOR_SOURCE)
+	$(CXX)  -std=c++11 -g $(AUTO_TRANSLATOR_SOURCE) $(CPPFLAGS) $(LDFLAGS) -o $@
 
-$(BUILD_DIR)/$(FOR-TRANSLATOR): $(FOR-TRANSLATOR_SOURCE)
-	$(CXX)  -std=c++11 -g $(FOR-TRANSLATOR_SOURCE) -I/home/sheep/opt/rose_inst/include/rose -I/home/sheep/opt/dlib/18.18  -pthread -I/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/include -I. -L/home/sheep/opt/rose_inst/lib -lrose -pthread  -L/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -lboost_date_time -lboost_thread -lboost_filesystem -lboost_program_options -lboost_regex -lboost_system -lboost_serialization -lboost_wave -lboost_iostreams -lboost_chrono -L/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -ljvm  -ldl -lm -L. -Wl,-rpath -Wl,/home/sheep/opt/jvm/jdk1.7.0_51/jre/lib/amd64/server -Wl,-rpath -Wl,/home/sheep/opt/boost/1.61.0/gcc-4.9.3-default/lib -o $@
+$(BUILD_DIR)/$(FOR_TRANSLATOR): $(FOR_TRANSLATOR_SOURCE)
+	$(CXX)  -std=c++11 -g $(FOR_TRANSLATOR_SOURCE) $(CPPFLAGS) $(LDFLAGS) -o $@
 
 # test the translator
-check: $(TRANSLATOR)
-	./$(TRANSLATOR) -c -I. -I$(ROSE_INSTALL)/include $(TESTCODE) 
+check: $(AUTO_TRANSLATOR)
+	./$(AUTO_TRANSLATOR) -c -I. -I$(ROSE_INSTALL)/include $(TESTCODE) 
 
 .PHONY: clean-build
 .PHONY: clean-tests
@@ -51,4 +58,4 @@ clean-tests:
 	rm -rf $(TESTS_DIR)/*.o $(TESTS_DIR)/rose_* $(TESTS_DIR)/*.dot $(TEST_DIR)/*.out
 
 clean-build:
-	rm -rf $(BUILD_DIR)/$(TRANSLATOR) $(BUILD_DIR)/*.o 
+	rm -rf $(BUILD_DIR)/$(AUTO_TRANSLATOR) $(BUILD_DIR)/$(FOR_TRANSLATOR) $(BUILD_DIR)/*.o 
