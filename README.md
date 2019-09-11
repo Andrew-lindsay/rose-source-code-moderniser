@@ -20,6 +20,10 @@ Alternatively you can download the precompiled ROSE binary.
 
 IN ALL CASES REMEMBER TO ADD THE ROSE LIBRARIES TO YOUR PATH SO IT IS VISABLE.
 
+## Disclaimer
+
+All the tools presented are experimental and could have undesired effects, i.e *Rose* does not always preserve orginal source code syntax used when transforming C++ code ([Rose Maual section 5.9](http://www.rosecompiler.org/ROSE_UserManual/ROSE-UserManual.pdf#section.5.9)).
+
 ## Useful resources
 1. [Rose tutorial](rosecompiler.org/ROSE_Tutorial/ROSE-Tutorial.pdf), has many examples of the different tools that can be build from rose.
 2. [Rose user manual](www.rosecompiler.org/ROSE_UserManual/ROSE-UserManual.pdf) 
